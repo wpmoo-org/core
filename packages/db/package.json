@@ -13,6 +13,7 @@
     "db:generate": "drizzle-kit generate --config drizzle.config.ts",
     "db:migrate": "drizzle-kit migrate --config drizzle.config.ts",
     "db:seed": "tsx src/seed.ts",
+    "db:test:reset": "tsx src/reset-test-db.ts",
     "db:test:migrate": "drizzle-kit migrate --config drizzle.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --root ../.. packages/db/test"

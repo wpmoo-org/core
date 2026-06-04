@@ -17,6 +17,7 @@
     "db:generate": "pnpm --filter @wpmoo/db db:generate",
     "db:migrate": "pnpm --filter @wpmoo/db db:migrate",
     "db:seed": "pnpm --filter @wpmoo/db db:seed",
+    "db:test:reset": "pnpm --filter @wpmoo/db db:test:reset",
     "db:test:migrate": "pnpm --filter @wpmoo/db db:test:migrate",
     "i18n:sync": "pnpm --filter @wpmoo/i18n routes:sync"
   },

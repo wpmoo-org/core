@@ -5,11 +5,13 @@ export default {
     type: "problem",
     docs: {
       description:
-        "Require mutating server actions and route handlers to go through action()."
+        "Require mutating server actions and route handlers to go through the correct security wrapper."
     },
     messages: {
       rawServerAction:
-        "Mutating server actions and route handlers must be exported through action()."
+        "Mutating server actions must be exported through action().",
+      rawRouteHandler:
+        "Mutating route handlers must be exported through routeAction()."
     },
     schema: []
   },
@@ -40,14 +42,31 @@ export default {
 
             context.report({
               node: declaration,
-              messageId: "rawServerAction"
+              messageId: isRouteHandler ? "rawRouteHandler" : "rawServerAction"
             });
             continue;
           }
 
           if (declaration.type === "VariableDeclaration") {
             for (const declarator of declaration.declarations) {
-              if (!isActionCall(declarator.init)) {
+              if (isRouteHandler) {
+                const routeMethod = getDeclaratorName(declarator);
+
+                if (!isMutatingRouteMethod(routeMethod)) {
+                  continue;
+                }
+
+                if (!isCallTo(declarator.init, "routeAction")) {
+                  context.report({
+                    node: declarator,
+                    messageId: "rawRouteHandler"
+                  });
+                }
+
+                continue;
+              }
+
+              if (!isCallTo(declarator.init, "action")) {
                 context.report({
                   node: declarator,
                   messageId: "rawServerAction"
@@ -71,10 +90,14 @@ function isMutatingRouteMethod(name) {
   return typeof name === "string" && mutatingRouteMethods.has(name);
 }
 
-function isActionCall(node) {
+function getDeclaratorName(declarator) {
+  return declarator.id.type === "Identifier" ? declarator.id.name : undefined;
+}
+
+function isCallTo(node, name) {
   if (node?.type !== "CallExpression") {
     return false;
   }
 
-  return node.callee.type === "Identifier" && node.callee.name === "action";
+  return node.callee.type === "Identifier" && node.callee.name === name;
 }

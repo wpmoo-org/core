@@ -70,7 +70,20 @@ describe("require-action-wrapper eslint rule", () => {
     expect(messages[0]?.message).toContain("action()");
   });
 
-  it("flags mutating route handlers that bypass action()", () => {
+  it("allows mutating route handlers created through routeAction()", () => {
+    const messages = linter.verify(
+      `
+      import { routeAction } from "../../../lib/action.js";
+      export const POST = routeAction("proof.noop", {});
+      `,
+      config,
+      { filename: "apps/playground/app/api/users/route.ts" }
+    );
+
+    expect(messages).toEqual([]);
+  });
+
+  it("flags mutating route handlers that bypass routeAction()", () => {
     const messages = linter.verify(
       `
       export async function POST() {
@@ -82,6 +95,35 @@ describe("require-action-wrapper eslint rule", () => {
     );
 
     expect(messages).toHaveLength(1);
-    expect(messages[0]?.message).toContain("action()");
+    expect(messages[0]?.message).toContain("routeAction()");
+  });
+
+  it("flags route handlers exported through the server action wrapper", () => {
+    const messages = linter.verify(
+      `
+      import { action } from "../../../lib/action.js";
+      export const POST = action("proof.noop", {});
+      `,
+      config,
+      { filename: "apps/playground/app/api/users/route.ts" }
+    );
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.message).toContain("routeAction()");
+  });
+
+  it("ignores non-mutating route handlers and route config exports", () => {
+    const messages = linter.verify(
+      `
+      export const dynamic = "force-dynamic";
+      export async function GET() {
+        return Response.json({ ok: true });
+      }
+      `,
+      config,
+      { filename: "apps/playground/app/api/users/route.ts" }
+    );
+
+    expect(messages).toEqual([]);
   });
 });

@@ -156,10 +156,11 @@ but CI remains the source of truth.
    ```ts
    const actor = await authorize({ resource: 'admin.users', action: 'read' })
    ```
-   Every mutating server action additionally goes through the security `action()`
-   wrapper (DTO validation → `authorize()` → stable error code → safe redirect →
-   CSRF for high/critical actions). Do not call the low-level `requirePermission`
-   primitive directly in new code.
+   Every mutating server action goes through the security `action()` wrapper.
+   Every mutating route handler goes through `routeAction()` so the handler
+   returns a `Response`. Both wrappers enforce DTO validation → `authorize()` →
+   stable error code → safe redirect → CSRF for high/critical actions. Do not
+   call the low-level `requirePermission` primitive directly in new code.
 
 ---
 

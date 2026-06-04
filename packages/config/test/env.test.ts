@@ -36,4 +36,15 @@ describe("createBaseEnv", () => {
       })
     ).toThrow();
   });
+
+  it("uses production-safe registration and email verification defaults", () => {
+    const env = createBaseEnv({
+      ...validEnv,
+      APP_ENCRYPTION_KEY: "c".repeat(32),
+      NODE_ENV: "production"
+    });
+
+    expect(env.REGISTRATION_MODE).toBe("invite_only");
+    expect(env.REQUIRE_EMAIL_VERIFICATION).toBe(true);
+  });
 });

@@ -1,5 +1,6 @@
 import {
   GENERIC_ERROR_CODE,
+  getErrorDefinition,
   toSafeErrorCode,
   type ErrorCode
 } from "@wpmoo/errors";
@@ -47,6 +48,18 @@ export type ActionContext<Input, Actor> = Readonly<{
 export type ActionOptions<Input extends object, Actor, Output> = Readonly<{
   authorize: (input: ActionAuthorizeInput<Input>) => Promise<Actor>;
   handler: (context: ActionContext<Input, Actor>) => Promise<Output>;
+  schema: z.ZodType<Input>;
+}>;
+
+export type RouteActionContext<Input, Actor> = ActionContext<Input, Actor> &
+  Readonly<{
+    request: Request;
+  }>;
+
+export type RouteActionOptions<Input extends object, Actor> = Readonly<{
+  authorize: (input: ActionAuthorizeInput<Input>) => Promise<Actor>;
+  handler: (context: RouteActionContext<Input, Actor>) => Promise<Response>;
+  parse: (request: Request) => Promise<unknown>;
   schema: z.ZodType<Input>;
 }>;
 
@@ -106,6 +119,48 @@ export function action<Input extends object, Actor, Output>(
   };
 }
 
+export function routeAction<Input extends object, Actor>(
+  actionId: ActionId,
+  options: RouteActionOptions<Input, Actor>
+) {
+  const policy = actionRegistry[actionId];
+
+  return async function wrappedRouteAction(request: Request): Promise<Response> {
+    let rawInput: unknown;
+
+    try {
+      rawInput = await options.parse(request);
+    } catch {
+      return routeFailure("validation.invalid_input");
+    }
+
+    const parsed = options.schema.safeParse(rawInput);
+
+    if (!parsed.success) {
+      return routeFailure("validation.invalid_input");
+    }
+
+    try {
+      assertCsrf(policy, parsed.data);
+
+      const actor = await options.authorize({
+        action: policy.action,
+        input: parsed.data,
+        resource: policy.resource
+      });
+
+      return await options.handler({
+        actor,
+        input: parsed.data,
+        policy,
+        request
+      });
+    } catch (error) {
+      return routeFailure(getStableErrorCode(error));
+    }
+  };
+}
+
 export function safeRedirectTarget(
   rawTarget: string | null | undefined,
   allowedPaths: readonly string[] = SAFE_REDIRECT_PATHS
@@ -159,6 +214,20 @@ function failure(code: ErrorCode): ActionFailure {
     },
     ok: false
   };
+}
+
+function routeFailure(code: ErrorCode): Response {
+  return Response.json(
+    {
+      error: {
+        code
+      },
+      ok: false
+    },
+    {
+      status: getErrorDefinition(code).httpStatus
+    }
+  );
 }
 
 function getStableErrorCode(error: unknown): ErrorCode {

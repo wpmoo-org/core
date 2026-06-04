@@ -13,6 +13,8 @@ Base requirements:
 - [ ] `DATABASE_URL` points to production Postgres 17.
 - [ ] `BETTER_AUTH_SECRET` is a unique random secret.
 - [ ] `NEXT_PUBLIC_APP_URL` and `BETTER_AUTH_URL` match the production domain.
+- [ ] `SERVER_ACTION_ALLOWED_ORIGINS` includes any trusted reverse-proxy or
+      multi-zone host that may invoke Server Actions; omit untrusted origins.
 - [ ] `REGISTRATION_MODE` is set intentionally (`invite_only` is the safe default;
       first deploy uses the documented single-use bootstrap registration exception;
       `disabled` disables even that exception and requires another documented admin-creation path).

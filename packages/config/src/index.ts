@@ -7,6 +7,14 @@ export const booleanStringSchema = z
   .enum(["true", "false"])
   .transform((value) => value === "true");
 
+export function defaultRegistrationMode(nodeEnv: string | undefined) {
+  return nodeEnv === "production" ? "invite_only" : "public";
+}
+
+export function defaultRequireEmailVerification(nodeEnv: string | undefined) {
+  return nodeEnv === "production";
+}
+
 export function requiredInProduction<T extends z.ZodType>(
   schema: T,
   nodeEnv: string | undefined
@@ -31,8 +39,12 @@ export function createBaseEnv(runtimeEnv: NodeJS.ProcessEnv) {
         z.string().min(32),
         runtimeEnv.NODE_ENV
       ),
-      REGISTRATION_MODE: z.enum(["public", "invite_only", "disabled"]).default("public"),
-      REQUIRE_EMAIL_VERIFICATION: booleanStringSchema.default(false)
+      REGISTRATION_MODE: z
+        .enum(["public", "invite_only", "disabled"])
+        .default(defaultRegistrationMode(runtimeEnv.NODE_ENV)),
+      REQUIRE_EMAIL_VERIFICATION: booleanStringSchema.default(
+        defaultRequireEmailVerification(runtimeEnv.NODE_ENV)
+      )
     },
     shared: {
       NODE_ENV: nodeEnvSchema.default("development"),

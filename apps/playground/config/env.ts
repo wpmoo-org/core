@@ -1,5 +1,7 @@
 import {
   booleanStringSchema,
+  defaultRegistrationMode,
+  defaultRequireEmailVerification,
   nodeEnvSchema,
   requiredInProduction
 } from "@wpmoo/config";
@@ -34,8 +36,10 @@ export function createPlaygroundEnv(runtimeEnv: PlaygroundRuntimeEnv) {
       ),
       REGISTRATION_MODE: z
         .enum(["public", "invite_only", "disabled"])
-        .default("public"),
-      REQUIRE_EMAIL_VERIFICATION: booleanStringSchema.default(false)
+        .default(defaultRegistrationMode(runtimeEnv.NODE_ENV)),
+      REQUIRE_EMAIL_VERIFICATION: booleanStringSchema.default(
+        defaultRequireEmailVerification(runtimeEnv.NODE_ENV)
+      )
     },
     client: {
       NEXT_PUBLIC_APP_URL: z.string().url()

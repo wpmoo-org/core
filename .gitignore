@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.next/
+.output/
+.turbo/
+out/
+storybook-static/
+
+# Test and coverage artifacts
+coverage/
+.vitest/
+playwright-report/
+test-results/
+
+# Runtime and local caches
+.cache/
+.vercel/
+.vite/
+tmp/
+*.tsbuildinfo
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.local
+
+# Local databases and generated binaries
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS/editor noise
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Phase 1 smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: wpmoo_core
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d wpmoo_core"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      ADMIN_BOOTSTRAP_TOKEN: ci-admin-bootstrap-token-minimum-32-chars
+      APP_ENCRYPTION_KEY: ci-app-encryption-key-minimum-32-chars
+      BETTER_AUTH_SECRET: ci-better-auth-secret-minimum-32-chars
+      BETTER_AUTH_URL: http://localhost:3000
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wpmoo_core
+      I18N_STRICT_LOCALES: en
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      NEXT_PUBLIC_DEFAULT_LOCALE: en
+      NEXT_PUBLIC_LOCALES: en,de,tr
+      RBAC_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wpmoo_core
+      REGISTRATION_MODE: public
+      REQUIRE_EMAIL_VERIFICATION: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+          version: 10.34.1
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          cache: pnpm
+          node-version: 20
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      - name: Reset test database
+        run: pnpm db:test:reset
+
+      - name: Migrate test database from zero
+        run: pnpm db:test:migrate
+
+      - name: Audit dependencies
+        continue-on-error: true
+        run: pnpm audit --audit-level=high

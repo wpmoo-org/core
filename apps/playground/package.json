@@ -13,6 +13,7 @@
   "dependencies": {
     "@t3-oss/env-nextjs": "0.13.11",
     "@wpmoo/config": "workspace:*",
+    "@wpmoo/errors": "workspace:*",
     "@wpmoo/i18n": "workspace:*",
     "@wpmoo/ui": "workspace:*",
     "next": "16.2.7",

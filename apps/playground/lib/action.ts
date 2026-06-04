@@ -1,0 +1,183 @@
+import {
+  GENERIC_ERROR_CODE,
+  toSafeErrorCode,
+  type ErrorCode
+} from "@wpmoo/errors";
+import { z } from "zod";
+
+export const actionRegistry = {
+  "proof.noop": {
+    action: "execute",
+    audit: false,
+    requireCsrf: false,
+    resource: "proof",
+    risk: "low"
+  },
+  "bootstrap.claim": {
+    action: "claim",
+    audit: true,
+    requireCsrf: true,
+    resource: "bootstrap",
+    risk: "critical"
+  }
+} as const;
+
+export const SAFE_REDIRECT_PATHS = [
+  "/",
+  "/admin/users",
+  "/dashboard",
+  "/setup/admin"
+] as const;
+
+export type ActionId = keyof typeof actionRegistry;
+export type ActionPolicy = (typeof actionRegistry)[ActionId];
+
+export type ActionAuthorizeInput<Input> = Readonly<{
+  action: string;
+  input: Input;
+  resource: string;
+}>;
+
+export type ActionContext<Input, Actor> = Readonly<{
+  actor: Actor;
+  input: Input;
+  policy: ActionPolicy;
+}>;
+
+export type ActionOptions<Input extends object, Actor, Output> = Readonly<{
+  authorize: (input: ActionAuthorizeInput<Input>) => Promise<Actor>;
+  handler: (context: ActionContext<Input, Actor>) => Promise<Output>;
+  schema: z.ZodType<Input>;
+}>;
+
+export type ActionFailure = Readonly<{
+  error: {
+    code: ErrorCode;
+  };
+  ok: false;
+}>;
+
+export type ActionSuccess<Output> = Readonly<{
+  data: Output;
+  ok: true;
+}>;
+
+export type ActionResult<Output> = ActionFailure | ActionSuccess<Output>;
+
+type CsrfInput = Readonly<{
+  csrfCookie?: string;
+  csrfToken?: string;
+}>;
+
+export function action<Input extends object, Actor, Output>(
+  actionId: ActionId,
+  options: ActionOptions<Input, Actor, Output>
+) {
+  const policy = actionRegistry[actionId];
+
+  return async function wrappedAction(rawInput: unknown): Promise<ActionResult<Output>> {
+    const parsed = options.schema.safeParse(rawInput);
+
+    if (!parsed.success) {
+      return failure("validation.invalid_input");
+    }
+
+    try {
+      assertCsrf(policy, parsed.data);
+
+      const actor = await options.authorize({
+        action: policy.action,
+        input: parsed.data,
+        resource: policy.resource
+      });
+      const data = await options.handler({
+        actor,
+        input: parsed.data,
+        policy
+      });
+
+      return {
+        data,
+        ok: true
+      };
+    } catch (error) {
+      return failure(getStableErrorCode(error));
+    }
+  };
+}
+
+export function safeRedirectTarget(
+  rawTarget: string | null | undefined,
+  allowedPaths: readonly string[] = SAFE_REDIRECT_PATHS
+): string | null {
+  if (rawTarget === undefined || rawTarget === null) {
+    return null;
+  }
+
+  const trimmedTarget = rawTarget.trim();
+
+  if (trimmedTarget.length === 0) {
+    return null;
+  }
+
+  const decodedTarget = decodeRedirectTarget(trimmedTarget);
+
+  if (
+    !decodedTarget.startsWith("/") ||
+    decodedTarget.startsWith("//") ||
+    /^[a-z][a-z0-9+.-]*:/i.test(decodedTarget)
+  ) {
+    return null;
+  }
+
+  const pathname = new URL(decodedTarget, "https://wpmoo.local").pathname;
+  const unlocalizedPath = pathname.replace(/^\/[a-z]{2}(?=\/|$)/, "") || "/";
+
+  return allowedPaths.includes(unlocalizedPath) ? pathname : null;
+}
+
+function assertCsrf(policy: ActionPolicy, input: object) {
+  if (!policy.requireCsrf) {
+    return;
+  }
+
+  const csrfInput = input as CsrfInput;
+
+  if (
+    csrfInput.csrfToken === undefined ||
+    csrfInput.csrfCookie === undefined ||
+    csrfInput.csrfToken !== csrfInput.csrfCookie
+  ) {
+    throw { code: "auth.forbidden" };
+  }
+}
+
+function failure(code: ErrorCode): ActionFailure {
+  return {
+    error: {
+      code
+    },
+    ok: false
+  };
+}
+
+function getStableErrorCode(error: unknown): ErrorCode {
+  if (
+    error !== null &&
+    typeof error === "object" &&
+    "code" in error &&
+    typeof error.code === "string"
+  ) {
+    return toSafeErrorCode(error.code);
+  }
+
+  return GENERIC_ERROR_CODE;
+}
+
+function decodeRedirectTarget(target: string): string {
+  try {
+    return decodeURIComponent(target);
+  } catch {
+    return target;
+  }
+}

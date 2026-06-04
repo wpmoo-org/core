@@ -44,6 +44,9 @@ importers:
       '@wpmoo/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@wpmoo/errors':
+        specifier: workspace:*
+        version: link:../../packages/errors
       '@wpmoo/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n

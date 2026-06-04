@@ -1,6 +1,13 @@
 import js from "@eslint/js";
 import boundaries from "eslint-plugin-boundaries";
 import tseslint from "typescript-eslint";
+import requireActionWrapper from "./eslint-rules/require-action-wrapper.mjs";
+
+const wpmooSecurityPlugin = {
+  rules: {
+    "require-action-wrapper": requireActionWrapper
+  }
+};
 
 export default tseslint.config(
   {
@@ -34,7 +41,8 @@ export default tseslint.config(
       }
     },
     plugins: {
-      boundaries
+      boundaries,
+      "wpmoo-security": wpmooSecurityPlugin
     },
     settings: {
       "boundaries/elements": [
@@ -56,7 +64,8 @@ export default tseslint.config(
             }
           ]
         }
-      ]
+      ],
+      "wpmoo-security/require-action-wrapper": "error"
     }
   }
 );

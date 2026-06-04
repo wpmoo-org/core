@@ -3,10 +3,9 @@
 Domain-free, single-tenant SaaS operating foundation for Next.js apps
 (shadcn-compatible admin, Better Auth, RBAC/IAM, audit, provider seams).
 
-> **Status:** contract/docs scaffold. Phase 1 implementation will add the
-> runnable monorepo scaffold (`package.json`, workspaces, Docker Compose, apps,
-> packages, tests, and CI). Until then, commands in the docs describe the target
-> workflow rather than a currently runnable repository.
+> **Status:** Phase 1 proof scaffold. The Better Auth proof pack pins the auth
+> package line, wires the initial auth factory, records schema diffs, and blocks
+> migration generation until proof approval.
 
 ## Docs
 

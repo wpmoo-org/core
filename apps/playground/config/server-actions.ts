@@ -1,7 +1,7 @@
 export type ServerActionAllowedOriginsEnv = Readonly<
   Partial<
     Record<
-      "NEXT_PUBLIC_APP_URL" | "SERVER_ACTION_ALLOWED_ORIGINS",
+      "NEXT_PUBLIC_APP_URL" | "NODE_ENV" | "SERVER_ACTION_ALLOWED_ORIGINS",
       string | undefined
     >
   >
@@ -10,9 +10,21 @@ export type ServerActionAllowedOriginsEnv = Readonly<
 export function getServerActionAllowedOrigins(
   env: NodeJS.ProcessEnv | ServerActionAllowedOriginsEnv
 ) {
+  const appOrigin = normalizeAllowedOrigin(env.NEXT_PUBLIC_APP_URL);
+  const configuredOrigins = parseOriginList(env.SERVER_ACTION_ALLOWED_ORIGINS);
+  const invalidOrigins = [appOrigin, ...configuredOrigins]
+    .map((origin) => origin.invalid)
+    .filter((origin): origin is string => origin !== null);
+
+  if (env.NODE_ENV === "production" && invalidOrigins.length > 0) {
+    throw new Error(
+      `Invalid server action allowed origin(s): ${invalidOrigins.join(", ")}`
+    );
+  }
+
   return uniqueOrigins([
-    normalizeAllowedOrigin(env.NEXT_PUBLIC_APP_URL),
-    ...parseOriginList(env.SERVER_ACTION_ALLOWED_ORIGINS)
+    appOrigin.value,
+    ...configuredOrigins.map((origin) => origin.value)
   ]);
 }
 
@@ -26,13 +38,19 @@ function normalizeAllowedOrigin(origin: string | undefined) {
   const trimmedOrigin = origin?.trim();
 
   if (trimmedOrigin === undefined || trimmedOrigin.length === 0) {
-    return null;
+    return {
+      invalid: null,
+      value: null
+    };
   }
 
   const wildcardHost = trimmedOrigin.replace(/^https?:\/\//i, "");
 
   if (/^\*\.[^/\s]+$/.test(wildcardHost)) {
-    return wildcardHost;
+    return {
+      invalid: null,
+      value: wildcardHost
+    };
   }
 
   try {
@@ -42,9 +60,15 @@ function normalizeAllowedOrigin(origin: string | undefined) {
         : `https://${trimmedOrigin}`
     );
 
-    return url.host;
+    return {
+      invalid: null,
+      value: url.host
+    };
   } catch {
-    return null;
+    return {
+      invalid: trimmedOrigin,
+      value: null
+    };
   }
 }
 

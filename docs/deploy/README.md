@@ -15,6 +15,8 @@ Base requirements:
 - [ ] `NEXT_PUBLIC_APP_URL` and `BETTER_AUTH_URL` match the production domain.
 - [ ] `SERVER_ACTION_ALLOWED_ORIGINS` includes any trusted reverse-proxy or
       multi-zone host that may invoke Server Actions; omit untrusted origins.
+      Entries use Next.js host/domain form such as `proxy.example.com` or
+      `*.proxy.example.com`; malformed production entries fail config loading.
 - [ ] `REGISTRATION_MODE` is set intentionally (`invite_only` is the safe default;
       first deploy uses the documented single-use bootstrap registration exception;
       `disabled` disables even that exception and requires another documented admin-creation path).

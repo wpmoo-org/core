@@ -6,6 +6,6 @@ export default defineConfig({
       enabled: false
     },
     globals: false,
-    include: ["packages/**/*.test.ts"]
+    include: ["apps/**/*.test.ts", "packages/**/*.test.ts"]
   }
 });

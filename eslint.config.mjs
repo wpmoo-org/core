@@ -3,11 +3,30 @@ import boundaries from "eslint-plugin-boundaries";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
+  {
+    ignores: [
+      "**/.next/**",
+      "**/.turbo/**",
+      "**/coverage/**",
+      "**/dist/**",
+      "**/node_modules/**",
+      "**/playwright-report/**",
+      "**/test-results/**"
+    ]
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
     files: ["**/*.js", "**/*.mjs", "**/*.cjs", "**/*.ts", "**/*.tsx"],
-    ignores: ["dist/**", "node_modules/**"],
+    ignores: [
+      ".next/**",
+      ".turbo/**",
+      "coverage/**",
+      "dist/**",
+      "node_modules/**",
+      "playwright-report/**",
+      "test-results/**"
+    ],
     languageOptions: {
       globals: {
         console: "readonly",

@@ -19,3 +19,7 @@ Domain-free, single-tenant SaaS operating foundation for Next.js apps
 Core provides the operating foundation: auth, users, roles/permissions, audit,
 settings, files, jobs, provider interfaces, privacy/GDPR basics, and i18n.
 Downstream products add their own domain models and screens on top.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

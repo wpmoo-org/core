@@ -7,11 +7,16 @@
   "packageManager": "pnpm@10.34.1",
   "scripts": {
     "build": "turbo run build",
-    "lint": "eslint . --max-warnings=0",
+    "domain:check": "node scripts/check-domain-neutrality.mjs",
+    "i18n:check": "pnpm --filter @wpmoo/i18n routes:check",
+    "i18n:routes": "pnpm --filter @wpmoo/i18n routes:sync",
+    "lint": "eslint . --max-warnings=0 && pnpm domain:check",
     "typecheck": "turbo run typecheck",
     "test": "vitest run",
     "auth:proof": "pnpm --filter @wpmoo/auth test",
-    "db:test:migrate": "node packages/db/scripts/assert-no-generated-migrations.mjs"
+    "db:generate": "pnpm --filter @wpmoo/db db:generate",
+    "db:migrate": "pnpm --filter @wpmoo/db db:migrate",
+    "db:test:migrate": "pnpm --filter @wpmoo/db db:test:migrate"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

@@ -1,0 +1,19 @@
+{
+  "name": "@wpmoo/i18n",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./route-reexports": "./src/route-reexports.ts",
+    "./routing": "./src/routing.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "routes:check": "tsx scripts/generate-localized-reexports.ts --check",
+    "routes:sync": "tsx scripts/generate-localized-reexports.ts",
+    "test": "vitest run --root ../.. packages/i18n/test",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

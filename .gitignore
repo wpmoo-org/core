@@ -6,8 +6,10 @@ node_modules/
 dist/
 build/
 .next/
+.output/
 .turbo/
 out/
+storybook-static/
 
 # Test and coverage artifacts
 coverage/
@@ -17,12 +19,18 @@ test-results/
 
 # Runtime and local caches
 .cache/
+.vercel/
+.vite/
+tmp/
 *.tsbuildinfo
 
 # Environment and secrets
 .env
 .env.*
 !.env.example
+*.key
+*.pem
+*.local
 
 # Local databases and generated binaries
 *.db

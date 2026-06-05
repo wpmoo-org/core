@@ -1,9 +1,12 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  createCircuitBreakerRateLimiter,
+  createRateLimitIpSubject,
   createRateLimitConfig,
   createPostgresRateLimiter,
   createNoopRateLimiter,
+  deleteExpiredRateLimitBuckets,
   hashRateLimitSubject,
   NoopRateLimiter,
   type RateLimitCheck,
@@ -127,6 +130,72 @@ describe("@wpmoo/rate-limit", () => {
     expect(hashRateLimitSubject({ type: "emailHash", value: "abc" })).not.toBe(
       hashRateLimitSubject({ type: "user", value: "abc" })
     );
+    expect(
+      hashRateLimitSubject({
+        type: "ip",
+        value: "2001:0DB8:0000:0000:0000:0000:0000:0001"
+      })
+    ).toBe(hashRateLimitSubject({ type: "ip", value: "2001:db8::1" }));
+    expect(
+      hashRateLimitSubject({ type: "ip", value: "::ffff:192.0.2.10" })
+    ).toBe(hashRateLimitSubject({ type: "ip", value: "192.0.2.10" }));
+  });
+
+  it("uses forwarded headers only when trusted by the composition root", () => {
+    expect(
+      createRateLimitIpSubject({
+        headers: {
+          "X-Forwarded-For": "203.0.113.10, 10.0.0.1",
+          "x-real-ip": "198.51.100.20"
+        },
+        remoteAddress: "192.0.2.30",
+        trustForwardedHeaders: true
+      })
+    ).toEqual({
+      type: "ip",
+      value: "203.0.113.10"
+    });
+    expect(
+      createRateLimitIpSubject({
+        headers: {
+          "x-forwarded-for": "203.0.113.10"
+        },
+        remoteAddress: "192.0.2.30",
+        trustForwardedHeaders: false
+      })
+    ).toEqual({
+      type: "ip",
+      value: "192.0.2.30"
+    });
+  });
+
+  it("normalizes IPv6 subjects before rate-limit persistence", () => {
+    expect(
+      createRateLimitIpSubject({
+        remoteAddress: "[2001:0DB8:0000:0000:0000:0000:0000:0001]"
+      })
+    ).toEqual({
+      type: "ip",
+      value: "2001:db8::1"
+    });
+    expect(() =>
+      createRateLimitIpSubject({
+        headers: {
+          "x-forwarded-for": "not-an-ip"
+        },
+        remoteAddress: "192.0.2.30",
+        trustForwardedHeaders: true
+      })
+    ).toThrow("Invalid IP address for rate-limit subject.");
+    expect(() =>
+      createRateLimitIpSubject({
+        headers: {
+          "x-forwarded-for": "unknown"
+        },
+        remoteAddress: "192.0.2.30",
+        trustForwardedHeaders: true
+      })
+    ).toThrow("Invalid IP address for rate-limit subject.");
   });
 
   it("uses an atomic per-bucket Postgres upsert", async () => {
@@ -162,6 +231,46 @@ describe("@wpmoo/rate-limit", () => {
     );
     expect(queries[0]?.parameters[0]).toBe("auth.login");
     expect(queries[0]?.parameters[1]).not.toBe("127.0.0.1");
+  });
+
+  it("keeps concurrent bucket checks on the same atomic upsert shape", async () => {
+    const { client, queries } = createQueryClient([
+      {
+        attempts: 1,
+        expires_at: new Date("2026-06-04T12:01:00.000Z")
+      },
+      {
+        attempts: 2,
+        expires_at: new Date("2026-06-04T12:01:00.000Z")
+      },
+      {
+        attempts: 3,
+        expires_at: new Date("2026-06-04T12:01:00.000Z")
+      }
+    ]);
+    const limiter = createPostgresRateLimiter({ client });
+    const baseCheck = {
+      scope: "auth.login",
+      subject: {
+        type: "ip",
+        value: "2001:0db8:0000:0000:0000:0000:0000:0001"
+      },
+      limit: 3,
+      windowSeconds: 60,
+      now: new Date("2026-06-04T12:00:30.000Z")
+    } satisfies RateLimitCheck;
+
+    await Promise.all([limiter.check(baseCheck), limiter.check(baseCheck), limiter.check(baseCheck)]);
+
+    expect(queries).toHaveLength(3);
+    expect(
+      queries.every((query) =>
+        query.sql.includes(
+          "ON CONFLICT (scope, identifier_hash, window_start) DO UPDATE"
+        )
+      )
+    ).toBe(true);
+    expect(new Set(queries.map((query) => query.parameters[1])).size).toBe(1);
   });
 
   it("denies when the Postgres bucket exceeds the limit", async () => {
@@ -221,6 +330,127 @@ describe("@wpmoo/rate-limit", () => {
       retryAfterSeconds: 30,
       reason: "store_unavailable"
     });
+  });
+
+  it("opens a fail-closed circuit after repeated store failures", async () => {
+    let calls = 0;
+    const limiter: RateLimiter = {
+      async check(check) {
+        calls += 1;
+
+        return {
+          allowed: false,
+          limit: check.limit,
+          remaining: 0,
+          resetAt: new Date("2026-06-04T12:00:30.000Z"),
+          retryAfterSeconds: 30,
+          reason: "store_unavailable"
+        };
+      }
+    };
+    const breaker = createCircuitBreakerRateLimiter({
+      cooldownMs: 5_000,
+      failureThreshold: 2,
+      limiter
+    });
+    const check = {
+      scope: "auth.bootstrap",
+      subject: {
+        type: "ip",
+        value: "127.0.0.1"
+      },
+      limit: 1,
+      windowSeconds: 30,
+      now: new Date("2026-06-04T12:00:00.000Z")
+    } satisfies RateLimitCheck;
+
+    await expect(breaker.check(check)).resolves.toMatchObject({
+      allowed: false,
+      reason: "store_unavailable"
+    });
+    await expect(breaker.check(check)).resolves.toMatchObject({
+      allowed: false,
+      reason: "store_unavailable"
+    });
+    await expect(
+      breaker.check({
+        ...check,
+        now: new Date("2026-06-04T12:00:01.000Z")
+      })
+    ).resolves.toMatchObject({
+      allowed: false,
+      reason: "store_unavailable"
+    });
+    expect(calls).toBe(2);
+  });
+
+  it("recovers the circuit breaker after cooldown when the limiter is healthy", async () => {
+    let calls = 0;
+    const limiter: RateLimiter = {
+      async check(check) {
+        calls += 1;
+
+        if (calls <= 2) {
+          return {
+            allowed: false,
+            limit: check.limit,
+            remaining: 0,
+            resetAt: new Date("2026-06-04T12:00:30.000Z"),
+            retryAfterSeconds: 30,
+            reason: "store_unavailable"
+          };
+        }
+
+        return {
+          allowed: true,
+          limit: check.limit,
+          remaining: check.limit - 1,
+          resetAt: new Date("2026-06-04T12:01:00.000Z"),
+          retryAfterSeconds: null
+        };
+      }
+    };
+    const breaker = createCircuitBreakerRateLimiter({
+      cooldownMs: 5_000,
+      failureThreshold: 2,
+      limiter
+    });
+    const check = {
+      scope: "auth.bootstrap",
+      subject: {
+        type: "ip",
+        value: "127.0.0.1"
+      },
+      limit: 1,
+      windowSeconds: 30,
+      now: new Date("2026-06-04T12:00:00.000Z")
+    } satisfies RateLimitCheck;
+
+    await breaker.check(check);
+    await breaker.check(check);
+    await expect(
+      breaker.check({
+        ...check,
+        now: new Date("2026-06-04T12:00:06.000Z")
+      })
+    ).resolves.toMatchObject({
+      allowed: true,
+      remaining: 0
+    });
+    expect(calls).toBe(3);
+  });
+
+  it("deletes expired Postgres buckets for the cleanup job", async () => {
+    const { client, queries } = createQueryClient([]);
+
+    await expect(
+      deleteExpiredRateLimitBuckets(client, new Date("2026-06-04T12:00:00.000Z"))
+    ).resolves.toBe(0);
+    expect(queries[0]?.sql).toContain("DELETE FROM rate_limit_bucket");
+    expect(queries[0]?.sql).toContain("WHERE expires_at < $1");
+    expect(queries[0]?.parameters).toEqual([
+      new Date("2026-06-04T12:00:00.000Z")
+    ]);
   });
 
   it("records no Redis or Upstash dependency in the package manifest", () => {

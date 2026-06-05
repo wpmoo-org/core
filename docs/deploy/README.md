@@ -125,7 +125,13 @@ reporting/scale headroom. Losing the single database loses all state.
 **Rate-limit prefilter.** The built-in limiter is Postgres-backed; under attack it
 adds load to the DB it protects. In production, put a cheap **edge/WAF/IP
 pre-rejection** in front of auth routes. The limiter **fails closed** on auth
-paths when the store is unavailable.
+paths when the store is unavailable, and auth paths should wrap it in the
+package circuit breaker so repeated store failures reject without repeatedly
+touching the DB until the cooldown elapses. Trust `x-forwarded-for`/`x-real-ip`
+only behind a known reverse proxy; otherwise derive the rate-limit subject from
+the direct remote address. IP subjects are canonicalized before hashing,
+including IPv6 and IPv4-mapped IPv6. Schedule the expired-bucket cleanup helper
+for `rate_limit_bucket.expires_at`.
 
 **Email for verified flows.** With `REQUIRE_EMAIL_VERIFICATION=true`, a production
 email provider (SMTP/Brevo/SES) is a hard prerequisite for auth/bootstrap — local

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isIP } from "node:net";
 
 export type RateLimitScope =
   | "auth.login"
@@ -66,6 +67,19 @@ export type RateLimitResult =
 export interface RateLimiter {
   check(check: RateLimitCheck): Promise<RateLimitResult>;
 }
+
+export type RateLimitIpSubjectInput = Readonly<{
+  headers?: Readonly<Record<string, string | undefined>>;
+  remoteAddress?: string;
+  trustForwardedHeaders?: boolean;
+}>;
+
+export type CircuitBreakerRateLimiterOptions = Readonly<{
+  cooldownMs: number;
+  failureThreshold: number;
+  limiter: RateLimiter;
+  now?: () => Date;
+}>;
 
 export function createRateLimitConfig(
   runtimeEnv: Record<string, string | undefined>
@@ -199,6 +213,47 @@ export class PostgresRateLimiter implements RateLimiter {
   }
 }
 
+export class CircuitBreakerRateLimiter implements RateLimiter {
+  readonly #cooldownMs: number;
+  readonly #failureThreshold: number;
+  readonly #limiter: RateLimiter;
+  readonly #now: () => Date;
+  #consecutiveStoreFailures = 0;
+  #openedUntil: Date | null = null;
+
+  constructor(options: CircuitBreakerRateLimiterOptions) {
+    this.#cooldownMs = options.cooldownMs;
+    this.#failureThreshold = options.failureThreshold;
+    this.#limiter = options.limiter;
+    this.#now = options.now ?? (() => new Date());
+  }
+
+  async check(check: RateLimitCheck): Promise<RateLimitResult> {
+    const now = check.now ?? this.#now();
+
+    if (this.#openedUntil !== null && this.#openedUntil.getTime() > now.getTime()) {
+      return createStoreUnavailableResult(check, now);
+    }
+
+    const result = await this.#limiter.check(check);
+
+    if (result.allowed || result.reason !== "store_unavailable") {
+      this.#consecutiveStoreFailures = 0;
+      this.#openedUntil = null;
+
+      return result;
+    }
+
+    this.#consecutiveStoreFailures += 1;
+
+    if (this.#consecutiveStoreFailures >= this.#failureThreshold) {
+      this.#openedUntil = new Date(now.getTime() + this.#cooldownMs);
+    }
+
+    return result;
+  }
+}
+
 export function createNoopRateLimiter(): RateLimiter {
   return new NoopRateLimiter();
 }
@@ -209,6 +264,36 @@ export function createPostgresRateLimiter(
   return new PostgresRateLimiter(options);
 }
 
+export function createCircuitBreakerRateLimiter(
+  options: CircuitBreakerRateLimiterOptions
+): RateLimiter {
+  return new CircuitBreakerRateLimiter(options);
+}
+
+export async function deleteExpiredRateLimitBuckets(
+  client: RateLimitQueryClient,
+  now: Date = new Date()
+): Promise<number> {
+  const result = await client.query(
+    `
+      DELETE FROM rate_limit_bucket
+      WHERE expires_at < $1
+    `,
+    [now]
+  );
+
+  return result.rowCount ?? 0;
+}
+
+export function createRateLimitIpSubject(
+  input: RateLimitIpSubjectInput
+): RateLimitSubject {
+  return {
+    type: "ip",
+    value: normalizeIpAddress(selectIpAddress(input))
+  };
+}
+
 export function hashRateLimitSubject(subject: RateLimitSubject): string {
   return createHash("sha256")
     .update(`${subject.type}:${normalizeSubjectValue(subject)}`, "utf8")
@@ -216,7 +301,142 @@ export function hashRateLimitSubject(subject: RateLimitSubject): string {
 }
 
 function normalizeSubjectValue(subject: RateLimitSubject): string {
+  if (subject.type === "ip") {
+    return normalizeIpAddress(subject.value);
+  }
+
   return subject.value.trim().toLowerCase();
+}
+
+function selectIpAddress(input: RateLimitIpSubjectInput): string {
+  if (input.trustForwardedHeaders === true) {
+    const forwardedFor = readHeader(input.headers, "x-forwarded-for");
+    const realIp = readHeader(input.headers, "x-real-ip");
+    const firstForwardedIp = forwardedFor?.split(",").at(0)?.trim();
+
+    if (firstForwardedIp !== undefined && firstForwardedIp.length > 0) {
+      return firstForwardedIp;
+    }
+
+    if (realIp !== undefined && realIp.trim().length > 0) {
+      return realIp;
+    }
+  }
+
+  if (input.remoteAddress === undefined || input.remoteAddress.trim().length === 0) {
+    throw new Error("A remote IP address is required for auth rate limiting.");
+  }
+
+  return input.remoteAddress;
+}
+
+function readHeader(
+  headers: Readonly<Record<string, string | undefined>> | undefined,
+  name: string
+): string | undefined {
+  if (headers === undefined) {
+    return undefined;
+  }
+
+  const direct = headers[name];
+
+  if (direct !== undefined) {
+    return direct;
+  }
+
+  const found = Object.entries(headers).find(
+    ([key]) => key.toLowerCase() === name
+  );
+
+  return found?.[1];
+}
+
+function normalizeIpAddress(value: string): string {
+  const trimmed = value.trim().toLowerCase();
+  const withoutBrackets =
+    trimmed.startsWith("[") && trimmed.endsWith("]")
+      ? trimmed.slice(1, -1)
+      : trimmed;
+  const withoutZone = withoutBrackets.split("%", 1)[0] ?? withoutBrackets;
+  const mappedIpv4 = withoutZone.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/);
+  const mappedIpv4Address = mappedIpv4?.[1];
+
+  if (mappedIpv4Address !== undefined && isIP(mappedIpv4Address) === 4) {
+    return mappedIpv4Address;
+  }
+
+  if (isIP(withoutZone) === 4) {
+    return withoutZone;
+  }
+
+  if (isIP(withoutZone) === 6) {
+    return normalizeIpv6(withoutZone);
+  }
+
+  throw new Error("Invalid IP address for rate-limit subject.");
+}
+
+function normalizeIpv6(value: string): string {
+  const [left = "", right = ""] = value.split("::", 2);
+  const leftParts = left.length === 0 ? [] : left.split(":");
+  const rightParts = right.length === 0 ? [] : right.split(":");
+  const zeroFill = Array.from(
+    { length: Math.max(8 - leftParts.length - rightParts.length, 0) },
+    () => "0"
+  );
+  const parts = [...leftParts, ...zeroFill, ...rightParts].map((part) =>
+    Number.parseInt(part, 16).toString(16)
+  );
+  const zeroRun = longestZeroRun(parts);
+
+  if (zeroRun.length < 2) {
+    return parts.join(":");
+  }
+
+  const before = parts.slice(0, zeroRun.start).join(":");
+  const after = parts.slice(zeroRun.start + zeroRun.length).join(":");
+
+  if (before.length === 0 && after.length === 0) {
+    return "::";
+  }
+
+  if (before.length === 0) {
+    return `::${after}`;
+  }
+
+  if (after.length === 0) {
+    return `${before}::`;
+  }
+
+  return `${before}::${after}`;
+}
+
+function longestZeroRun(parts: readonly string[]): Readonly<{
+  length: number;
+  start: number;
+}> {
+  let best = { length: 0, start: -1 };
+  let current = { length: 0, start: -1 };
+
+  parts.forEach((part, index) => {
+    if (part === "0") {
+      if (current.length === 0) {
+        current = { length: 1, start: index };
+      } else {
+        current = { ...current, length: current.length + 1 };
+      }
+
+      if (current.length > best.length) {
+        best = current;
+      }
+
+      return;
+    }
+
+    current = { length: 0, start: -1 };
+  });
+
+  return best;
 }
 
 function parseRateLimitProvider(
@@ -287,4 +507,18 @@ function readDate(value: unknown): Date | null {
   }
 
   return null;
+}
+
+function createStoreUnavailableResult(
+  check: RateLimitCheck,
+  now: Date
+): RateLimitDeniedResult {
+  return {
+    allowed: false,
+    limit: check.limit,
+    remaining: 0,
+    resetAt: new Date(now.getTime() + check.windowSeconds * 1000),
+    retryAfterSeconds: check.windowSeconds,
+    reason: "store_unavailable"
+  };
 }

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
+import { createPlaygroundEnv } from "../../config/env";
 import type { RegistrationMode } from "../../lib/phase2-access";
-import { loadRegisterPage, readRegistrationMode } from "../../lib/phase2-pages";
+import { loadRegisterPage } from "../../lib/phase2-pages";
 
 export const dynamic = "force-dynamic";
 
@@ -9,8 +10,9 @@ export function resolveRegisterPageAccess(mode: RegistrationMode) {
 }
 
 export default function RegisterPage() {
+  const env = createPlaygroundEnv(process.env);
   const page = loadRegisterPage({
-    mode: readRegistrationMode(process.env.REGISTRATION_MODE)
+    mode: env.REGISTRATION_MODE
   });
 
   if (!page.access.allowed) {

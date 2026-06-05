@@ -20,6 +20,7 @@
     "test": "vitest run --root ../.. packages/db/test"
   },
   "dependencies": {
+    "@wpmoo/rbac": "workspace:*",
     "drizzle-orm": "0.45.2",
     "pg": "8.21.0"
   },

@@ -130,6 +130,82 @@ describe("@wpmoo/rbac", () => {
     ).rejects.toMatchObject({ code: "auth.forbidden" });
   });
 
+  it("allows a temporarily suspended user after the lifecycle expiry passes", async () => {
+    await expect(
+      authorize(
+        { resource: "admin.users", action: "read" },
+        {
+          getEffectiveAccessForRequest: async () => ({
+            ...activeAccess,
+            lifecycle: {
+              expiresAt: new Date("2026-06-04T12:30:00.000Z"),
+              status: "suspended"
+            }
+          }),
+          now: new Date("2026-06-04T12:31:00.000Z"),
+          resolveSession: async () => ({
+            sessionId: "session_1",
+            userId: "user_1"
+          })
+        }
+      )
+    ).resolves.toMatchObject({
+      sessionId: "session_1",
+      userId: "user_1"
+    });
+  });
+
+  it("treats a lifecycle expiry at the current instant as expired", async () => {
+    const expiry = new Date("2026-06-04T12:30:00.000Z");
+
+    await expect(
+      authorize(
+        { resource: "admin.users", action: "read" },
+        {
+          getEffectiveAccessForRequest: async () => ({
+            ...activeAccess,
+            lifecycle: {
+              expiresAt: expiry,
+              status: "suspended"
+            }
+          }),
+          now: expiry,
+          resolveSession: async () => ({
+            sessionId: "session_1",
+            userId: "user_1"
+          })
+        }
+      )
+    ).resolves.toMatchObject({
+      sessionId: "session_1",
+      userId: "user_1"
+    });
+  });
+
+  it("resolves effective access once across repeated authorize calls in one request", async () => {
+    const load = vi.fn().mockResolvedValue({
+      ...activeAccess,
+      permissions: new Set(["admin.users:read", "admin.users:update"])
+    });
+    const getEffectiveAccessForRequest = createRequestEffectiveAccessLoader(load);
+    const context = {
+      getEffectiveAccessForRequest,
+      resolveSession: async () => ({
+        sessionId: "session_1",
+        userId: "user_1"
+      })
+    };
+
+    await expect(
+      authorize({ resource: "admin.users", action: "read" }, context)
+    ).resolves.toMatchObject({ userId: "user_1" });
+    await expect(
+      authorize({ resource: "admin.users", action: "update" }, context)
+    ).resolves.toMatchObject({ userId: "user_1" });
+
+    expect(load).toHaveBeenCalledOnce();
+  });
+
   it("rejects missing permissions through the same authorize seam", async () => {
     await expect(
       authorize(

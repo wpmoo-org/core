@@ -1,4 +1,10 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  randomBytes,
+  timingSafeEqual
+} from "node:crypto";
 
 export type ConstantTimeComparable = string | Uint8Array;
 
@@ -65,8 +71,8 @@ export type EncryptionHelperOptions = Readonly<{
 
 export type EncryptionHelper = Readonly<{
   algorithm: typeof ENCRYPTION_ALGORITHM;
-  decryptSecret: (envelope: EncryptedSecretEnvelope) => never;
-  encryptSecret: (plaintext: ConstantTimeComparable) => never;
+  decryptSecret: (envelope: EncryptedSecretEnvelope) => string;
+  encryptSecret: (plaintext: ConstantTimeComparable) => EncryptedSecretEnvelope;
   keyVersion: string;
 }>;
 
@@ -88,21 +94,47 @@ export function requireAppEncryptionKey(
 export function createEncryptionHelper(
   options: EncryptionHelperOptions = {}
 ): EncryptionHelper {
-  requireAppEncryptionKey(options);
+  const key = parseAppEncryptionKey(requireAppEncryptionKey(options));
 
   return {
     algorithm: ENCRYPTION_ALGORITHM,
     decryptSecret(envelope) {
-      void envelope;
-      throw new EncryptionUnavailableError(
-        "Encrypted secret persistence is not implemented in Phase 1."
+      if (envelope.algorithm !== ENCRYPTION_ALGORITHM) {
+        throw new EncryptionUnavailableError("Unsupported encryption algorithm.");
+      }
+      if (envelope.version !== ENCRYPTED_SECRET_VERSION) {
+        throw new EncryptionUnavailableError("Unsupported encrypted secret version.");
+      }
+
+      const decipher = createDecipheriv(
+        ENCRYPTION_ALGORITHM,
+        key,
+        Buffer.from(envelope.nonce, "base64url")
       );
+
+      decipher.setAuthTag(Buffer.from(envelope.tag, "base64url"));
+
+      return Buffer.concat([
+        decipher.update(Buffer.from(envelope.ciphertext, "base64url")),
+        decipher.final()
+      ]).toString("utf8");
     },
     encryptSecret(plaintext) {
-      void plaintext;
-      throw new EncryptionUnavailableError(
-        "Encrypted secret persistence is not implemented in Phase 1."
-      );
+      const nonce = randomBytes(12);
+      const cipher = createCipheriv(ENCRYPTION_ALGORITHM, key, nonce);
+      const ciphertext = Buffer.concat([
+        cipher.update(toBuffer(plaintext)),
+        cipher.final()
+      ]);
+
+      return {
+        algorithm: ENCRYPTION_ALGORITHM,
+        ciphertext: ciphertext.toString("base64url"),
+        keyVersion: options.keyVersion ?? "default",
+        nonce: nonce.toString("base64url"),
+        tag: cipher.getAuthTag().toString("base64url"),
+        version: ENCRYPTED_SECRET_VERSION
+      };
     },
     keyVersion: options.keyVersion ?? "default"
   };
@@ -144,6 +176,30 @@ export function createSecurityHeaders(
 
 function toBuffer(value: ConstantTimeComparable): Buffer {
   return typeof value === "string" ? Buffer.from(value, "utf8") : Buffer.from(value);
+}
+
+function parseAppEncryptionKey(key: string | undefined): Buffer {
+  if (key === undefined) {
+    throw new EncryptionUnavailableError(
+      "APP_ENCRYPTION_KEY is required before encrypted secret persistence can run."
+    );
+  }
+
+  const trimmed = key.trim();
+  const candidates = [
+    Buffer.from(trimmed, "base64url"),
+    Buffer.from(trimmed, "base64"),
+    /^[0-9a-f]+$/i.test(trimmed) ? Buffer.from(trimmed, "hex") : Buffer.alloc(0)
+  ];
+  const parsed = candidates.find((candidate) => candidate.length === 32);
+
+  if (parsed === undefined) {
+    throw new EncryptionUnavailableError(
+      "APP_ENCRYPTION_KEY must decode to 32 bytes for aes-256-gcm."
+    );
+  }
+
+  return parsed;
 }
 
 function createContentSecurityPolicy(

@@ -28,3 +28,12 @@ export {
 export type {
   I18nMiddlewareDecision
 } from "./middleware.js";
+export {
+  createCachedLocaleMessageLoader,
+  deepMergeMessages
+} from "./messages.js";
+export type {
+  CachedLocaleMessageLoaderOptions,
+  LocaleMessageLoader,
+  MessageTree
+} from "./messages.js";

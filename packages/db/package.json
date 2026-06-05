@@ -6,7 +6,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./schema/auth": "./src/schema/auth.ts"
+    "./schema/auth": "./src/schema/auth.ts",
+    "./schema/core": "./src/schema/core.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createPlaygroundEnv } from "../config/env.js";
 
 const validRuntimeEnv = {
@@ -10,6 +10,16 @@ const validRuntimeEnv = {
   NODE_ENV: "test"
 };
 
+function expectInvalidEnv(callback: () => void) {
+  const stderr = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+  try {
+    expect(callback).toThrow();
+  } finally {
+    stderr.mockRestore();
+  }
+}
+
 describe("createPlaygroundEnv", () => {
   it("parses server, shared, and client env values", () => {
     const env = createPlaygroundEnv(validRuntimeEnv);
@@ -20,21 +30,21 @@ describe("createPlaygroundEnv", () => {
   });
 
   it("rejects a non-standard NODE_ENV value", () => {
-    expect(() =>
+    expectInvalidEnv(() =>
       createPlaygroundEnv({
         ...validRuntimeEnv,
         NODE_ENV: "preview"
       })
-    ).toThrow();
+    );
   });
 
   it("requires APP_ENCRYPTION_KEY in production", () => {
-    expect(() =>
+    expectInvalidEnv(() =>
       createPlaygroundEnv({
         ...validRuntimeEnv,
         NODE_ENV: "production"
       })
-    ).toThrow();
+    );
   });
 
   it("uses production-safe registration and email verification defaults", () => {

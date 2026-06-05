@@ -3,10 +3,11 @@
 Domain-free, single-tenant SaaS operating foundation for Next.js apps
 (shadcn-compatible admin, Better Auth, RBAC/IAM, audit, provider seams).
 
-> **Status:** Phase 4.5 visual alignment. The core foundation has completed the
-> proof pack, first secure slice, hardening pass, and initial UI pattern
-> standardization. The current pass tightens shadcn-compatible admin visuals and
-> rendered DataTable interactions before RBAC/IAM depth.
+> **Status:** Phase 4.6 real-slice reconciliation is in progress. Phase 0-4.5
+> produced the proof foundation, security helpers, RBAC/audit seams, admin UI
+> patterns, and shadcn-compatible visual alignment. Phase 4.6 reconciles that
+> proof work into route-bound product behavior and adds permanent architecture
+> contract gates before Phase 5 RBAC/IAM depth.
 
 ## Docs
 

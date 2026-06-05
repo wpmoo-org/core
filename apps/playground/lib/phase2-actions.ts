@@ -202,8 +202,13 @@ export function createRevokeRoleAction(options: CreateRoleActionOptions) {
     handler: async ({ actor, input }) => {
       const revoked = await options.transaction(async (client) => {
         if (input.roleId === "admin") {
-          // Phase 2 keeps the guard in the mutation transaction. Phase 3 adds
-          // an advisory-lock/concurrency proof for simultaneous admin revokes.
+          // Serialize current critical RBAC mutations before re-reading guards.
+          await client.query(
+            `
+              SELECT pg_advisory_xact_lock(hashtext('rbac:critical'))
+            `
+          );
+
           const adminCount = await client.query(
             `
               SELECT COUNT(*) AS count

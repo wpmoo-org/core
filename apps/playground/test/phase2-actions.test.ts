@@ -612,6 +612,8 @@ describe("Phase 2 admin role actions", () => {
     });
     expect(queries.join("\n")).not.toContain("DELETE FROM user_role");
     expect(queries.join("\n")).not.toContain("INSERT INTO audit_event");
+    expect(queries[0]).toContain("pg_advisory_xact_lock");
+    expect(queries[1]).toContain("COUNT(*)");
   });
 
   it("revokes a non-last role and writes audit inside the same transaction", async () => {
@@ -657,6 +659,10 @@ describe("Phase 2 admin role actions", () => {
     });
 
     const sql = queries.map((query) => query.sql).join("\n");
+    expect(queries[0]?.sql).toContain("pg_advisory_xact_lock");
+    expect(queries[1]?.sql).toContain("COUNT(*)");
+    expect(queries[2]?.sql).toContain("DELETE FROM user_role");
+    expect(queries[3]?.sql).toContain("INSERT INTO audit_event");
     expect(sql).toContain("DELETE FROM user_role");
     expect(sql).toContain("INSERT INTO audit_event");
     expect(queries.find((query) => query.sql.includes("DELETE FROM user_role"))?.parameters).toEqual([
@@ -700,5 +706,42 @@ describe("Phase 2 admin role actions", () => {
       ok: true
     });
     expect(queries.join("\n")).not.toContain("INSERT INTO audit_event");
+  });
+
+  it("does not take the critical RBAC lock for non-critical role revokes", async () => {
+    const queries: string[] = [];
+    const revokeRole = createRevokeRoleAction({
+      authorize: vi.fn().mockResolvedValue({
+        sessionId: "session_1",
+        userId: "admin_1"
+      }),
+      transaction: async (callback) =>
+        callback({
+          async query(sql) {
+            queries.push(sql);
+
+            return {
+              rowCount: 1,
+              rows: []
+            };
+          }
+        })
+    });
+
+    await expect(
+      revokeRole({
+        clientIp: "127.0.0.1",
+        csrfCookie: "csrf",
+        csrfToken: "csrf",
+        roleId: "user",
+        targetUserId: "user_2"
+      })
+    ).resolves.toEqual({
+      data: {
+        revoked: true
+      },
+      ok: true
+    });
+    expect(queries.join("\n")).not.toContain("pg_advisory_xact_lock");
   });
 });

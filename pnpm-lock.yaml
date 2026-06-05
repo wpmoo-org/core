@@ -110,6 +110,8 @@ importers:
         specifier: 0.31.10
         version: 0.31.10
 
+  packages/email: {}
+
   packages/errors: {}
 
   packages/i18n: {}

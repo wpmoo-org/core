@@ -108,6 +108,28 @@ describe("@wpmoo/rbac", () => {
     ).rejects.toMatchObject({ code: "auth.forbidden" });
   });
 
+  it("rejects suspended users until the lifecycle expiry passes", async () => {
+    await expect(
+      authorize(
+        { resource: "admin.users", action: "read" },
+        {
+          getEffectiveAccessForRequest: async () => ({
+            ...activeAccess,
+            lifecycle: {
+              expiresAt: new Date("2026-06-04T12:30:00.000Z"),
+              status: "suspended"
+            }
+          }),
+          now: new Date("2026-06-04T12:00:00.000Z"),
+          resolveSession: async () => ({
+            sessionId: "session_1",
+            userId: "user_1"
+          })
+        }
+      )
+    ).rejects.toMatchObject({ code: "auth.forbidden" });
+  });
+
   it("rejects missing permissions through the same authorize seam", async () => {
     await expect(
       authorize(

@@ -1,0 +1,704 @@
+import { describe, expect, it, vi } from "vitest";
+import type { RateLimiter } from "@wpmoo/rate-limit";
+import {
+  createAssignRoleAction,
+  createBootstrapClaimAction,
+  createLoginAction,
+  createRevokeRoleAction,
+  type BootstrapTransactionClient
+} from "../lib/phase2-actions.js";
+
+function createLimiter(allowed: boolean): RateLimiter {
+  return {
+    async check(check) {
+      if (allowed) {
+        return {
+          allowed: true,
+          limit: check.limit,
+          remaining: check.limit - 1,
+          resetAt: new Date("2026-06-04T12:01:00.000Z"),
+          retryAfterSeconds: null
+        };
+      }
+
+      return {
+        allowed: false,
+        limit: check.limit,
+        remaining: 0,
+        resetAt: new Date("2026-06-04T12:01:00.000Z"),
+        retryAfterSeconds: 60,
+        reason: "limit_exceeded"
+      };
+    }
+  };
+}
+
+describe("Phase 2 auth actions", () => {
+  it("rate-limits login before returning the generic invalid credentials code", async () => {
+    const login = createLoginAction({
+      rateLimit: {
+        limit: 3,
+        windowSeconds: 60
+      },
+      rateLimiter: createLimiter(false)
+    });
+
+    await expect(
+      login({
+        clientIp: "127.0.0.1",
+        email: "admin@example.test",
+        password: "incorrect-password"
+      })
+    ).resolves.toEqual({
+      error: {
+        code: "auth.rate_limited"
+      },
+      ok: false
+    });
+  });
+
+  it("keeps login account enumeration-safe after rate-limit passes", async () => {
+    const rateLimitSubjects: string[] = [];
+    const login = createLoginAction({
+      rateLimit: {
+        limit: 3,
+        windowSeconds: 60
+      },
+      rateLimiter: {
+        async check(check) {
+          rateLimitSubjects.push(`${check.subject.type}:${check.subject.value}`);
+
+          return {
+            allowed: true,
+            limit: check.limit,
+            remaining: check.limit - 1,
+            resetAt: new Date("2026-06-04T12:01:00.000Z"),
+            retryAfterSeconds: null
+          };
+        }
+      }
+    });
+
+    await expect(
+      login({
+        clientIp: "127.0.0.1",
+        email: "missing@example.test",
+        password: "incorrect-password"
+      })
+    ).resolves.toEqual({
+      error: {
+        code: "auth.invalid_credentials"
+      },
+      ok: false
+    });
+    await expect(
+      login({
+        clientIp: "127.0.0.1",
+        email: "admin@example.test",
+        password: "incorrect-password"
+      })
+    ).resolves.toEqual({
+      error: {
+        code: "auth.invalid_credentials"
+      },
+      ok: false
+    });
+    expect(rateLimitSubjects).toEqual(["ip:127.0.0.1", "ip:127.0.0.1"]);
+  });
+
+  it("claims first admin inside one transaction and writes audit before commit", async () => {
+    const queries: Array<{ sql: string; parameters: readonly unknown[] }> = [];
+    const transactionClient: BootstrapTransactionClient = {
+      async query(sql, parameters) {
+        queries.push({
+          sql,
+          parameters: parameters ?? []
+        });
+
+        if (sql.includes("INSERT INTO system_setting")) {
+          return {
+            rowCount: 1,
+            rows: [{ key: "bootstrap_used" }]
+          };
+        }
+
+        return {
+          rowCount: 1,
+          rows: []
+        };
+      }
+    };
+    const claim = createBootstrapClaimAction({
+      adminBootstrapToken: "a".repeat(32),
+      authorize: vi.fn().mockResolvedValue({
+        sessionId: "session_1",
+        userId: "user_1"
+      }),
+      rateLimit: {
+        limit: 1,
+        windowSeconds: 30
+      },
+      rateLimiter: createLimiter(true),
+      transaction: async (callback) => callback(transactionClient)
+    });
+
+    await expect(
+      claim({
+        clientIp: "127.0.0.1",
+        csrfCookie: "csrf",
+        csrfToken: "csrf",
+        token: "a".repeat(32)
+      })
+    ).resolves.toEqual({
+      data: {
+        claimed: true
+      },
+      ok: true
+    });
+
+    const sql = queries.map((query) => query.sql).join("\n");
+    const auditQuery = queries.find((query) =>
+      query.sql.includes("INSERT INTO audit_event")
+    );
+
+    expect(sql).toContain("INSERT INTO system_setting");
+    expect(sql).toContain("INSERT INTO user_role");
+    expect(sql).toContain("INSERT INTO audit_event");
+    expect(sql).toContain("UPDATE system_setting");
+    expect(auditQuery?.parameters).toEqual([
+      expect.any(String),
+      "user_1",
+      "system.admin.bootstrap",
+      "user",
+      "user_1",
+      "critical",
+      {
+        roleId: "admin"
+      },
+      "127.0.0.1",
+      expect.any(Date)
+    ]);
+  });
+
+  it("does not mark bootstrap used when role assignment fails", async () => {
+    const queries: string[] = [];
+    const claim = createBootstrapClaimAction({
+      adminBootstrapToken: "a".repeat(32),
+      authorize: vi.fn().mockResolvedValue({
+        sessionId: "session_1",
+        userId: "user_1"
+      }),
+      rateLimit: {
+        limit: 1,
+        windowSeconds: 30
+      },
+      rateLimiter: createLimiter(true),
+      transaction: async (callback) =>
+        callback({
+          async query(sql) {
+            queries.push(sql);
+
+            if (sql.includes("INSERT INTO system_setting")) {
+              return {
+                rowCount: 1,
+                rows: [{ key: "bootstrap_used" }]
+              };
+            }
+
+            if (sql.includes("INSERT INTO user_role")) {
+              throw new Error("role assignment failed");
+            }
+
+            return {
+              rowCount: 1,
+              rows: []
+            };
+          }
+        })
+    });
+
+    await expect(
+      claim({
+        clientIp: "127.0.0.1",
+        csrfCookie: "csrf",
+        csrfToken: "csrf",
+        token: "a".repeat(32)
+      })
+    ).resolves.toEqual({
+      error: {
+        code: "system.unexpected"
+      },
+      ok: false
+    });
+    expect(queries.join("\n")).not.toContain("UPDATE system_setting");
+  });
+
+  it("rolls back the transaction when bootstrap fails after writing audit", async () => {
+    const queries: string[] = [];
+    const committedStatements: string[] = [];
+    const claim = createBootstrapClaimAction({
+      adminBootstrapToken: "a".repeat(32),
+      authorize: vi.fn().mockResolvedValue({
+        sessionId: "session_1",
+        userId: "user_1"
+      }),
+      rateLimit: {
+        limit: 1,
+        windowSeconds: 30
+      },
+      rateLimiter: createLimiter(true),
+      transaction: async (callback) => {
+        const transactionStatements: string[] = [];
+        const result = await callback({
+          async query(sql) {
+            queries.push(sql);
+            transactionStatements.push(sql);
+
+            if (sql.includes("INSERT INTO system_setting")) {
+              return {
+                rowCount: 1,
+                rows: [{ key: "bootstrap_used" }]
+              };
+            }
+
+            if (sql.includes("UPDATE system_setting")) {
+              throw new Error("commit marker failed");
+            }
+
+            return {
+              rowCount: 1,
+              rows: []
+            };
+          }
+        });
+
+        committedStatements.push(...transactionStatements);
+
+        return result;
+      }
+    });
+
+    await expect(
+      claim({
+        clientIp: "127.0.0.1",
+        csrfCookie: "csrf",
+        csrfToken: "csrf",
+        token: "a".repeat(32)
+      })
+    ).resolves.toEqual({
+      error: {
+        code: "system.unexpected"
+      },
+      ok: false
+    });
+    expect(queries.join("\n")).toContain("INSERT INTO audit_event");
+    expect(committedStatements.join("\n")).not.toContain("INSERT INTO audit_event");
+  });
+
+  it("rejects a second bootstrap claim when the DB lock already exists", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const claim = createBootstrapClaimAction({
+      adminBootstrapToken: "a".repeat(32),
+      authorize: vi.fn().mockResolvedValue({
+        sessionId: "session_1",
+        userId: "user_1"
+      }),
+      rateLimit: {
+        limit: 1,
+        windowSeconds: 30
+      },
+      rateLimiter: createLimiter(true),
+      transaction: async (callback) =>
+        callback({
+          async query(sql) {
+            if (sql.includes("INSERT INTO system_setting")) {
+              return {
+                rowCount: 0,
+                rows: []
+              };
+            }
+
+            return {
+              rowCount: 1,
+              rows: []
+            };
+          }
+        })
+    });
+
+    const result = await claim({
+      clientIp: "127.0.0.1",
+      csrfCookie: "csrf-cookie-secret",
+      csrfToken: "csrf-cookie-secret",
+      token: "a".repeat(32)
+    });
+
+    expect(result).toEqual({
+      error: {
+        code: "bootstrap.invalid_or_used"
+      },
+      ok: false
+    });
+    expect(JSON.stringify(result)).not.toContain("csrf-cookie-secret");
+    expect(JSON.stringify(result)).not.toContain("a".repeat(32));
+    expect(consoleError).not.toHaveBeenCalled();
+    expect(consoleInfo).not.toHaveBeenCalled();
+    expect(consoleWarn).not.toHaveBeenCalled();
+
+    consoleError.mockRestore();
+    consoleInfo.mockRestore();
+    consoleWarn.mockRestore();
+  });
+
+  it("does not expose raw login credentials in invalid credential responses or logs", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const login = createLoginAction({
+      rateLimit: {
+        limit: 3,
+        windowSeconds: 60
+      },
+      rateLimiter: createLimiter(true)
+    });
+
+    const result = await login({
+      clientIp: "127.0.0.1",
+      email: "missing@example.test",
+      password: "raw-password-secret"
+    });
+
+    expect(result).toEqual({
+      error: {
+        code: "auth.invalid_credentials"
+      },
+      ok: false
+    });
+    expect(JSON.stringify(result)).not.toContain("missing@example.test");
+    expect(JSON.stringify(result)).not.toContain("raw-password-secret");
+    expect(consoleError).not.toHaveBeenCalled();
+    expect(consoleInfo).not.toHaveBeenCalled();
+    expect(consoleWarn).not.toHaveBeenCalled();
+
+    consoleError.mockRestore();
+    consoleInfo.mockRestore();
+    consoleWarn.mockRestore();
+  });
+
+  it("keeps unknown-email and wrong-password login attempts on the same branch", async () => {
+    const checks: Array<Readonly<{ scope: string; subject: string }>> = [];
+    const login = createLoginAction({
+      rateLimit: {
+        limit: 3,
+        windowSeconds: 60
+      },
+      rateLimiter: {
+        async check(check) {
+          checks.push({
+            scope: check.scope,
+            subject: `${check.subject.type}:${check.subject.value}`
+          });
+
+          return {
+            allowed: true,
+            limit: check.limit,
+            remaining: check.limit - 1,
+            resetAt: new Date("2026-06-04T12:01:00.000Z"),
+            retryAfterSeconds: null
+          };
+        }
+      }
+    });
+
+    const unknownEmailResult = await login({
+      clientIp: "127.0.0.1",
+      email: "missing@example.test",
+      password: "incorrect-password"
+    });
+    const wrongPasswordResult = await login({
+      clientIp: "127.0.0.1",
+      email: "admin@example.test",
+      password: "incorrect-password"
+    });
+
+    expect(unknownEmailResult).toEqual(wrongPasswordResult);
+    expect(checks).toEqual([
+      {
+        scope: "auth.login",
+        subject: "ip:127.0.0.1"
+      },
+      {
+        scope: "auth.login",
+        subject: "ip:127.0.0.1"
+      }
+    ]);
+  });
+
+  it("rejects same-length bootstrap token mismatches", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const claim = createBootstrapClaimAction({
+      adminBootstrapToken: "a".repeat(32),
+      authorize: vi.fn().mockResolvedValue({
+        sessionId: "session_1",
+        userId: "user_1"
+      }),
+      rateLimit: {
+        limit: 1,
+        windowSeconds: 30
+      },
+      rateLimiter: createLimiter(true),
+      transaction: async () => {
+        throw new Error("transaction should not run");
+      }
+    });
+
+    await expect(
+      claim({
+        clientIp: "127.0.0.1",
+        csrfCookie: "csrf",
+        csrfToken: "csrf",
+        token: "b".repeat(32)
+      })
+    ).resolves.toEqual({
+      error: {
+        code: "bootstrap.invalid_or_used"
+      },
+      ok: false
+    });
+    expect(consoleError).not.toHaveBeenCalled();
+    expect(consoleInfo).not.toHaveBeenCalled();
+    expect(consoleWarn).not.toHaveBeenCalled();
+
+    consoleError.mockRestore();
+    consoleInfo.mockRestore();
+    consoleWarn.mockRestore();
+  });
+});
+
+describe("Phase 2 admin role actions", () => {
+  it("assigns a role and writes audit inside the same transaction", async () => {
+    const queries: Array<{ sql: string; parameters: readonly unknown[] }> = [];
+    const assignRole = createAssignRoleAction({
+      authorize: vi.fn().mockResolvedValue({
+        sessionId: "session_1",
+        userId: "admin_1"
+      }),
+      transaction: async (callback) =>
+        callback({
+          async query(sql, parameters) {
+            queries.push({ sql, parameters: parameters ?? [] });
+
+            return {
+              rowCount: 1,
+              rows: []
+            };
+          }
+        })
+    });
+
+    await expect(
+      assignRole({
+        clientIp: "127.0.0.1",
+        csrfCookie: "csrf",
+        csrfToken: "csrf",
+        roleId: "admin",
+        targetUserId: "user_2"
+      })
+    ).resolves.toEqual({
+      data: {
+        assigned: true
+      },
+      ok: true
+    });
+
+    const sql = queries.map((query) => query.sql).join("\n");
+    expect(sql).toContain("INSERT INTO user_role");
+    expect(sql).toContain("INSERT INTO audit_event");
+    expect(queries[0]?.parameters).toEqual(["user_2", "admin", "admin_1"]);
+    expect(queries[1]?.parameters).toEqual([
+      expect.any(String),
+      "admin_1",
+      "admin.users.role.assign",
+      "user",
+      "user_2",
+      "high",
+      { roleId: "admin" },
+      "127.0.0.1",
+      expect.any(Date)
+    ]);
+  });
+
+  it("does not audit an assign request when the role already exists", async () => {
+    const queries: string[] = [];
+    const assignRole = createAssignRoleAction({
+      authorize: vi.fn().mockResolvedValue({
+        sessionId: "session_1",
+        userId: "admin_1"
+      }),
+      transaction: async (callback) =>
+        callback({
+          async query(sql) {
+            queries.push(sql);
+
+            return {
+              rowCount: 0,
+              rows: []
+            };
+          }
+        })
+    });
+
+    await expect(
+      assignRole({
+        clientIp: "127.0.0.1",
+        csrfCookie: "csrf",
+        csrfToken: "csrf",
+        roleId: "user",
+        targetUserId: "user_2"
+      })
+    ).resolves.toEqual({
+      data: {
+        assigned: false
+      },
+      ok: true
+    });
+    expect(queries.join("\n")).not.toContain("INSERT INTO audit_event");
+  });
+
+  it("revoke role action enforces the last-admin guard before mutation and audit", async () => {
+    const queries: string[] = [];
+    const revokeRole = createRevokeRoleAction({
+      authorize: vi.fn().mockResolvedValue({
+        sessionId: "session_1",
+        userId: "admin_1"
+      }),
+      transaction: async (callback) =>
+        callback({
+          async query(sql) {
+            queries.push(sql);
+
+            if (sql.includes("COUNT(*)")) {
+              return {
+                rowCount: 1,
+                rows: [{ count: "1" }]
+              };
+            }
+
+            return {
+              rowCount: 1,
+              rows: []
+            };
+          }
+        })
+    });
+
+    await expect(
+      revokeRole({
+        clientIp: "127.0.0.1",
+        csrfCookie: "csrf",
+        csrfToken: "csrf",
+        roleId: "admin",
+        targetUserId: "admin_1"
+      })
+    ).resolves.toEqual({
+      error: {
+        code: "auth.forbidden"
+      },
+      ok: false
+    });
+    expect(queries.join("\n")).not.toContain("DELETE FROM user_role");
+    expect(queries.join("\n")).not.toContain("INSERT INTO audit_event");
+  });
+
+  it("revokes a non-last role and writes audit inside the same transaction", async () => {
+    const queries: Array<{ sql: string; parameters: readonly unknown[] }> = [];
+    const revokeRole = createRevokeRoleAction({
+      authorize: vi.fn().mockResolvedValue({
+        sessionId: "session_1",
+        userId: "admin_1"
+      }),
+      transaction: async (callback) =>
+        callback({
+          async query(sql, parameters) {
+            queries.push({ sql, parameters: parameters ?? [] });
+
+            if (sql.includes("COUNT(*)")) {
+              return {
+                rowCount: 1,
+                rows: [{ count: "2" }]
+              };
+            }
+
+            return {
+              rowCount: 1,
+              rows: []
+            };
+          }
+        })
+    });
+
+    await expect(
+      revokeRole({
+        clientIp: "127.0.0.1",
+        csrfCookie: "csrf",
+        csrfToken: "csrf",
+        roleId: "admin",
+        targetUserId: "admin_2"
+      })
+    ).resolves.toEqual({
+      data: {
+        revoked: true
+      },
+      ok: true
+    });
+
+    const sql = queries.map((query) => query.sql).join("\n");
+    expect(sql).toContain("DELETE FROM user_role");
+    expect(sql).toContain("INSERT INTO audit_event");
+    expect(queries.find((query) => query.sql.includes("DELETE FROM user_role"))?.parameters).toEqual([
+      "admin_2",
+      "admin"
+    ]);
+  });
+
+  it("does not audit a revoke request when the role is already absent", async () => {
+    const queries: string[] = [];
+    const revokeRole = createRevokeRoleAction({
+      authorize: vi.fn().mockResolvedValue({
+        sessionId: "session_1",
+        userId: "admin_1"
+      }),
+      transaction: async (callback) =>
+        callback({
+          async query(sql) {
+            queries.push(sql);
+
+            return {
+              rowCount: sql.includes("DELETE FROM user_role") ? 0 : 1,
+              rows: [{ count: "2" }]
+            };
+          }
+        })
+    });
+
+    await expect(
+      revokeRole({
+        clientIp: "127.0.0.1",
+        csrfCookie: "csrf",
+        csrfToken: "csrf",
+        roleId: "admin",
+        targetUserId: "admin_2"
+      })
+    ).resolves.toEqual({
+      data: {
+        revoked: false
+      },
+      ok: true
+    });
+    expect(queries.join("\n")).not.toContain("INSERT INTO audit_event");
+  });
+});

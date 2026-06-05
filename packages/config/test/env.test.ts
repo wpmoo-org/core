@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createBaseEnv } from "../src/index.js";
 
 const validEnv = {
@@ -10,6 +10,16 @@ const validEnv = {
   NODE_ENV: "test"
 };
 
+function expectInvalidEnv(callback: () => void) {
+  const stderr = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+  try {
+    expect(callback).toThrow();
+  } finally {
+    stderr.mockRestore();
+  }
+}
+
 describe("createBaseEnv", () => {
   it("parses valid base env values", () => {
     const env = createBaseEnv(validEnv);
@@ -20,21 +30,21 @@ describe("createBaseEnv", () => {
   });
 
   it("rejects non-standard NODE_ENV values", () => {
-    expect(() =>
+    expectInvalidEnv(() =>
       createBaseEnv({
         ...validEnv,
         NODE_ENV: "staging"
       })
-    ).toThrow();
+    );
   });
 
   it("requires APP_ENCRYPTION_KEY in production", () => {
-    expect(() =>
+    expectInvalidEnv(() =>
       createBaseEnv({
         ...validEnv,
         NODE_ENV: "production"
       })
-    ).toThrow();
+    );
   });
 
   it("uses production-safe registration and email verification defaults", () => {

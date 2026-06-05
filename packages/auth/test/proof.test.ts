@@ -1,8 +1,10 @@
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
-import { createAuth } from "../src/auth.js";
+import { createAuth, createAuthConfig } from "../src/auth.js";
 import {
+  betterAuthRuntimeTokenProof,
   findProofColumn,
   pinnedBetterAuthVersion,
   schemaDiffsVsCoreContract,
@@ -69,4 +71,123 @@ describe("Better Auth proof pack", () => {
     expect(tokenPersistenceDecisions.totpSecret.path).toContain("encrypted adapter");
     expect(tokenPersistenceDecisions.backupCodes.path).toContain("one-way hashed");
   });
+
+  it("proves Better Auth stores reset/email verification bearer tokens by hashed identifier", async () => {
+    const rawIdentifier = "reset-password:raw-token-that-must-not-be-stored";
+    const storedIdentifier =
+      await betterAuthRuntimeTokenProof.processVerificationIdentifier(rawIdentifier);
+
+    expect(betterAuthRuntimeTokenProof.coreVerificationStorage).toMatchObject({
+      storeInDatabase: true,
+      storeIdentifier: {
+        default: "hashed",
+        overrides: {
+          "email-verification": "hashed",
+          "password-reset": "hashed",
+          "reset-password": "hashed"
+        }
+      }
+    });
+    expect(storedIdentifier).not.toBe(rawIdentifier);
+    expect(storedIdentifier).not.toContain("raw-token-that-must-not-be-stored");
+    expect(await betterAuthRuntimeTokenProof.matchesVerificationIdentifier(rawIdentifier, storedIdentifier)).toBe(
+      true
+    );
+  });
+
+  it("keeps token-value plugins disabled until their storeToken behavior is wired", () => {
+    expect(betterAuthRuntimeTokenProof.disabledTokenValuePlugins).toEqual([
+      "magicLink",
+      "oneTimeToken"
+    ]);
+  });
+
+  it("pins Better Auth source paths for DB-backed verification token hashing", () => {
+    const betterAuthDistDir = getBetterAuthDistDir();
+    const internalAdapterSource = readFileSync(
+      resolve(betterAuthDistDir, "db/internal-adapter.mjs"),
+      "utf8"
+    );
+    const passwordRouteSource = readFileSync(
+      resolve(betterAuthDistDir, "api/routes/password.mjs"),
+      "utf8"
+    );
+    const emailVerificationSource = readFileSync(
+      resolve(betterAuthDistDir, "api/routes/email-verification.mjs"),
+      "utf8"
+    );
+    const signUpSource = readFileSync(
+      resolve(betterAuthDistDir, "api/routes/sign-up.mjs"),
+      "utf8"
+    );
+
+    expect(internalAdapterSource).toContain(
+      "const storageOption = getStorageOption(data.identifier, options.verification?.storeIdentifier)"
+    );
+    expect(internalAdapterSource).toContain(
+      "identifier: storedIdentifier"
+    );
+    expect(internalAdapterSource).toContain(
+      "const storedIdentifier = await processIdentifier(identifier, storageOption)"
+    );
+    expect(internalAdapterSource).toContain("consumeVerificationValue: async (identifier)");
+    expect(internalAdapterSource).toContain(
+      "const identifiersToTry = storageOption && storageOption !== \"plain\" ? [storedIdentifier, identifier] : [storedIdentifier]"
+    );
+    expect(internalAdapterSource).toContain("deleteVerificationByIdentifier: async (identifier)");
+    expect(passwordRouteSource).toContain("identifier: `reset-password:${verificationToken}`");
+    expect(passwordRouteSource).toContain("value: user.user.id");
+    expect(emailVerificationSource).toContain("async function createEmailVerificationToken");
+    expect(emailVerificationSource).not.toContain("createVerificationValue({");
+    expect(signUpSource).toContain("const token = await createEmailVerificationToken");
+    expect(signUpSource).not.toContain("createVerificationValue({");
+  });
+
+  it("proves verification.value is not the reset or email verification bearer token path", () => {
+    const betterAuthDistDir = getBetterAuthDistDir();
+    const passwordRouteSource = readFileSync(
+      resolve(betterAuthDistDir, "api/routes/password.mjs"),
+      "utf8"
+    );
+    const emailVerificationSource = readFileSync(
+      resolve(betterAuthDistDir, "api/routes/email-verification.mjs"),
+      "utf8"
+    );
+    const signUpSource = readFileSync(
+      resolve(betterAuthDistDir, "api/routes/sign-up.mjs"),
+      "utf8"
+    );
+
+    expect(passwordRouteSource).toContain("identifier: `reset-password:${verificationToken}`");
+    expect(passwordRouteSource).toContain("value: user.user.id");
+    expect(passwordRouteSource).not.toContain("value: verificationToken");
+    expect(passwordRouteSource).not.toContain("value: token");
+    expect(emailVerificationSource).toContain("async function createEmailVerificationToken");
+    expect(emailVerificationSource).not.toContain("value: token");
+    expect(signUpSource).toContain("const token = await createEmailVerificationToken");
+    expect(signUpSource).not.toContain("value: token");
+  });
+
+  it("proves token-value plugins and persisted-secret flows are absent from the auth config", () => {
+    const authConfig = createAuthConfig({
+      database: {} as Parameters<typeof createAuthConfig>[0]["database"],
+      trustedOrigins: ["https://wpmoo.local"],
+      useSecureCookies: true
+    });
+
+    expect(authConfig.plugins).toBeUndefined();
+    expect(authConfig.socialProviders).toBeUndefined();
+    expect(authConfig.account?.accountLinking).toBeUndefined();
+    expect(authConfig.emailAndPassword.enabled).toBe(true);
+    expect(authConfig.verification).toBe(
+      betterAuthRuntimeTokenProof.coreVerificationStorage
+    );
+  });
 });
+
+function getBetterAuthDistDir(): string {
+  const require = createRequire(import.meta.url);
+  const entrypointPath = require.resolve("better-auth");
+
+  return dirname(entrypointPath);
+}

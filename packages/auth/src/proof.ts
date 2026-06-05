@@ -1,3 +1,10 @@
+import {
+  coreVerificationStorage,
+  disabledTokenValuePlugins,
+  matchesVerificationIdentifier,
+  processVerificationIdentifier
+} from "./verification-storage.js";
+
 export const pinnedBetterAuthVersion = "1.6.14" as const;
 
 export type ProofColumn = {
@@ -225,9 +232,9 @@ export const tokenPersistenceDecisions = {
   },
   verificationAndMagicLinkTokens: {
     path:
-      "Configure Better Auth verification/magic-link token storage as hashed before email verification, password reset, or magic-link flows merge.",
+      "Better Auth core reset/email verification bearer tokens are embedded in verification.identifier and Core stores those identifiers hashed; magic-link/one-time-token plugins remain disabled until their storeToken option is wired as hashed.",
     control:
-      "Default magic-link storeToken is plain in docs; Core must set storeToken: 'hashed' and keep short expiry plus rate limits."
+      "Core sets verification.storeIdentifier to hashed for default, email-verification, password-reset, and reset-password prefixes. Default magic-link/one-time-token storeToken is plain in the pinned plugin source, so those plugins stay disabled until explicitly configured with storeToken: 'hashed' and covered by a runtime proof."
   },
   oauthProviderTokens: {
     path:
@@ -247,6 +254,15 @@ export const tokenPersistenceDecisions = {
     control:
       "If the pinned plugin stores plaintext, Core wraps generation/storage before enabling 2FA."
   }
+} as const;
+
+export const betterAuthRuntimeTokenProof = {
+  coreVerificationStorage,
+  disabledTokenValuePlugins,
+  matchesVerificationIdentifier,
+  processVerificationIdentifier,
+  runtimeEvidence:
+    "better-auth@1.6.14 internalAdapter hashes verification.identifier with verification.storeIdentifier before DB create/find/consume; reset-password bearer tokens are stored in the identifier prefix, not verification.value."
 } as const;
 
 export function findProofColumn(tableName: string, columnName: string) {

@@ -6,7 +6,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./schema/auth": "./src/schema/auth.ts"
+    "./schema/auth": "./src/schema/auth.ts",
+    "./schema/core": "./src/schema/core.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -19,6 +20,7 @@
     "test": "vitest run --root ../.. packages/db/test"
   },
   "dependencies": {
+    "@wpmoo/rbac": "workspace:*",
     "drizzle-orm": "0.45.2",
     "pg": "8.21.0"
   },

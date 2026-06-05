@@ -26,6 +26,12 @@ export const ERROR_REGISTRY = {
     logLevel: "warn",
     translationKey: "Errors.Auth.InvalidCredentials"
   },
+  "auth.rate_limited": {
+    code: "auth.rate_limited",
+    httpStatus: 429,
+    logLevel: "warn",
+    translationKey: "Errors.Auth.RateLimited"
+  },
   "bootstrap.invalid_or_used": {
     code: "bootstrap.invalid_or_used",
     httpStatus: 409,

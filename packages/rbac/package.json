@@ -1,0 +1,19 @@
+{
+  "name": "@wpmoo/rbac",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./catalog": "./src/catalog.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --root ../.. packages/rbac/test"
+  },
+  "dependencies": {
+    "@wpmoo/errors": "workspace:*"
+  }
+}

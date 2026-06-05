@@ -1,6 +1,7 @@
 import { drizzleAdapter, type DB } from "@better-auth/drizzle-adapter";
 import { authSchema } from "@wpmoo/db/schema/auth";
 import { betterAuth } from "better-auth";
+import { coreVerificationStorage } from "./verification-storage.js";
 
 export type CreateAuthOptions = {
   database: DB;
@@ -9,7 +10,11 @@ export type CreateAuthOptions = {
 };
 
 export function createAuth(options: CreateAuthOptions) {
-  return betterAuth({
+  return betterAuth(createAuthConfig(options));
+}
+
+export function createAuthConfig(options: CreateAuthOptions) {
+  return {
     appName: "WPMoo Core",
     database: drizzleAdapter(options.database, {
       provider: "pg",
@@ -27,19 +32,10 @@ export function createAuth(options: CreateAuthOptions) {
       storeSessionInDatabase: true,
       updateAge: 60 * 60 * 24
     },
-    verification: {
-      storeIdentifier: {
-        default: "hashed",
-        overrides: {
-          "email-verification": "hashed",
-          "password-reset": "hashed"
-        }
-      },
-      storeInDatabase: true
-    },
+    verification: coreVerificationStorage,
     trustedOrigins: options.trustedOrigins ?? [],
     advanced: {
       useSecureCookies: options.useSecureCookies
     }
-  });
+  };
 }

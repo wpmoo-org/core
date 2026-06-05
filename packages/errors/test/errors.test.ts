@@ -12,6 +12,7 @@ describe("@wpmoo/errors", () => {
     expect(Object.keys(ERROR_REGISTRY).sort()).toEqual([
       "auth.forbidden",
       "auth.invalid_credentials",
+      "auth.rate_limited",
       "auth.unauthorized",
       "bootstrap.invalid_or_used",
       "system.unexpected",

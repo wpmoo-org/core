@@ -41,6 +41,9 @@ importers:
       '@t3-oss/env-nextjs':
         specifier: 0.13.11
         version: 0.13.11(typescript@5.9.3)(zod@4.4.3)
+      '@wpmoo/audit':
+        specifier: workspace:*
+        version: link:../../packages/audit
       '@wpmoo/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -50,6 +53,12 @@ importers:
       '@wpmoo/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
+      '@wpmoo/rate-limit':
+        specifier: workspace:*
+        version: link:../../packages/rate-limit
+      '@wpmoo/rbac':
+        specifier: workspace:*
+        version: link:../../packages/rbac
       '@wpmoo/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -72,6 +81,8 @@ importers:
       '@types/react-dom':
         specifier: 19.2.3
         version: 19.2.3(@types/react@19.2.16)
+
+  packages/audit: {}
 
   packages/auth:
     dependencies:
@@ -96,6 +107,9 @@ importers:
 
   packages/db:
     dependencies:
+      '@wpmoo/rbac':
+        specifier: workspace:*
+        version: link:../rbac
       drizzle-orm:
         specifier: 0.45.2
         version: 0.45.2(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.21.0)
@@ -110,6 +124,8 @@ importers:
         specifier: 0.31.10
         version: 0.31.10
 
+  packages/email: {}
+
   packages/errors: {}
 
   packages/i18n: {}
@@ -117,6 +133,12 @@ importers:
   packages/logging: {}
 
   packages/rate-limit: {}
+
+  packages/rbac:
+    dependencies:
+      '@wpmoo/errors':
+        specifier: workspace:*
+        version: link:../errors
 
   packages/security: {}
 

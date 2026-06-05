@@ -12,9 +12,12 @@
   },
   "dependencies": {
     "@t3-oss/env-nextjs": "0.13.11",
+    "@wpmoo/audit": "workspace:*",
     "@wpmoo/config": "workspace:*",
     "@wpmoo/errors": "workspace:*",
     "@wpmoo/i18n": "workspace:*",
+    "@wpmoo/rate-limit": "workspace:*",
+    "@wpmoo/rbac": "workspace:*",
     "@wpmoo/ui": "workspace:*",
     "next": "16.2.7",
     "react": "19.2.7",

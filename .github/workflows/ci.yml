@@ -70,6 +70,9 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Architecture contracts
+        run: pnpm architecture:check
+
       - name: Typecheck
         run: pnpm typecheck
 

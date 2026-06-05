@@ -8,6 +8,7 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "pnpm --filter @wpmoo/playground dev",
+    "architecture:check": "node scripts/check-architecture-contracts.mjs",
     "domain:check": "node scripts/check-domain-neutrality.mjs",
     "i18n:check": "pnpm --filter @wpmoo/i18n routes:check",
     "i18n:routes": "pnpm --filter @wpmoo/i18n routes:sync",

@@ -21,6 +21,7 @@ describe("@wpmoo/rbac", () => {
     expect(corePermissionCatalog.map((permission) => permission.id)).toEqual([
       "admin.users:read",
       "admin.users:update",
+      "admin.permissions:update",
       "admin.audit:read"
     ]);
     expect(new Set(corePermissionCatalog.map((permission) => permission.id)).size).toBe(

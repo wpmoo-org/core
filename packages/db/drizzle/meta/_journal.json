@@ -22,6 +22,13 @@
       "when": 1780629196461,
       "tag": "0002_phase_3_key_versions_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1780635000000,
+      "tag": "0003_phase_5_user_permission",
+      "breakpoints": true
     }
   ]
 }

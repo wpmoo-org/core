@@ -30,6 +30,15 @@ export const corePermissionCatalog = [
     risk: "high"
   },
   {
+    id: "admin.permissions:update",
+    resource: "admin.permissions",
+    action: "update",
+    label: "Manage permission grants",
+    category: "Admin users",
+    description: "Grant and revoke admin-level permissions.",
+    risk: "critical"
+  },
+  {
     id: "admin.audit:read",
     resource: "admin.audit",
     action: "read",

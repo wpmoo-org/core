@@ -292,26 +292,26 @@ describe("Phase 2 access policy", () => {
         target: "user:admin"
       },
       {
-        action: "admin.users.role.assign",
+        action: "rbac.role.grant",
         risk: "high",
         target: "user:core"
       },
       {
-        action: "admin.users.role.revoke",
+        action: "rbac.role.revoke",
         risk: "high",
         target: "user:core"
       }
     ], queries));
 
     expect(queries.join("\n")).toContain("FROM audit_event");
-    expect(queries.join("\n")).toContain("admin.users.role.assign");
+    expect(queries.join("\n")).toContain("rbac.role.grant");
     expect(page.auditRows).toContainEqual({
-      action: "admin.users.role.assign",
+      action: "rbac.role.grant",
       risk: "high",
       target: "user:core"
     });
     expect(page.auditRows).toContainEqual({
-      action: "admin.users.role.revoke",
+      action: "rbac.role.revoke",
       risk: "high",
       target: "user:core"
     });

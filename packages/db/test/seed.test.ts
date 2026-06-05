@@ -33,6 +33,7 @@ describe("seedCore", () => {
     expect(corePermissionSeeds.map((permission) => permission.id)).toEqual([
       "admin.users:read",
       "admin.users:update",
+      "admin.permissions:update",
       "admin.audit:read"
     ]);
     expect(coreRolePermissionSeeds).toEqual(

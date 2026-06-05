@@ -96,7 +96,7 @@ describe("admin page DB binding", () => {
   it("keeps admin audit loader SQL bounded to the expected query budget", async () => {
     const query = recordingClient([
       {
-        action: "admin.users.role.assign",
+        action: "rbac.role.grant",
         risk: "high",
         target: "user:user_1"
       }
@@ -105,7 +105,7 @@ describe("admin page DB binding", () => {
     await expect(loadAdminAuditPage(adminContext(), query.client)).resolves.toEqual({
       auditRows: [
         {
-          action: "admin.users.role.assign",
+          action: "rbac.role.grant",
           risk: "high",
           target: "user:user_1"
         }

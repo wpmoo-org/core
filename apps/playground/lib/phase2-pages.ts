@@ -48,12 +48,12 @@ export const phase2AuditRows = [
     target: "user:admin"
   },
   {
-    action: "admin.users.role.assign",
+    action: "rbac.role.grant",
     risk: "high",
     target: "user:core"
   },
   {
-    action: "admin.users.role.revoke",
+    action: "rbac.role.revoke",
     risk: "high",
     target: "user:core"
   }
@@ -122,8 +122,8 @@ export async function loadAdminAuditPage(
       FROM audit_event
       WHERE action IN (
         'system.admin.bootstrap',
-        'admin.users.role.assign',
-        'admin.users.role.revoke'
+        'rbac.role.grant',
+        'rbac.role.revoke'
       )
       ${"OR"}${"DER"} BY created_at DESC, id DESC
       LIMIT 50

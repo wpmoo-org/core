@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   index,
   integer,
+  boolean,
   jsonb,
   pgTable,
   primaryKey,
@@ -100,6 +101,31 @@ export const userRole = pgTable(
   ]
 );
 
+export const userPermission = pgTable(
+  "user_permission",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    permissionId: text("permission_id")
+      .notNull()
+      .references(() => permission.id, { onDelete: "cascade" }),
+    granted: boolean("granted").notNull(),
+    grantedByUserId: text("granted_by_user_id").references(() => user.id, {
+      onDelete: "set null"
+    }),
+    grantedAt: instant("granted_at").defaultNow().notNull()
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.userId, table.permissionId],
+      name: "user_permission_pk"
+    }),
+    index("user_permission_permission_id_idx").on(table.permissionId),
+    index("user_permission_granted_by_user_id_idx").on(table.grantedByUserId)
+  ]
+);
+
 export const auditEvent = pgTable(
   "audit_event",
   {
@@ -163,6 +189,7 @@ export const coreSchema = {
   permission,
   rolePermission,
   userRole,
+  userPermission,
   auditEvent,
   systemSetting,
   rateLimitBucket

@@ -13,12 +13,16 @@ describe("loadEffectiveAccess", () => {
           rows: [
             {
               expires_at: null,
+              granted: true,
               permission_id: "admin.users:read",
+              source: "role",
               status: "active"
             },
             {
               expires_at: null,
+              granted: true,
               permission_id: "admin.users:update",
+              source: "role",
               status: "active"
             }
           ]
@@ -34,10 +38,52 @@ describe("loadEffectiveAccess", () => {
       permissions: new Set(["admin.users:read", "admin.users:update"]),
       userId: "user_1"
     });
-    expect(queries[0]).toContain("LEFT JOIN user_role");
+    expect(queries[0]).toContain("LEFT JOIN (");
     expect(queries[0]).toContain("role_permission");
     expect(queries[0]).toContain("AND role.stage = 'active'");
-    expect(queries[0]).not.toContain("user_permission");
+    expect(queries[0]).toContain("user_permission");
+  });
+
+  it("respects explicit deny overrides against role grants", async () => {
+    const client: DbQueryClient = {
+      async query() {
+        return {
+          rowCount: 3,
+          rows: [
+            {
+              expires_at: null,
+              granted: false,
+              permission_id: "admin.users:update",
+              source: "direct",
+              status: "active"
+            },
+            {
+              expires_at: null,
+              granted: true,
+              permission_id: "admin.users:update",
+              source: "role",
+              status: "active"
+            },
+            {
+              expires_at: null,
+              granted: true,
+              permission_id: "admin.users:read",
+              source: "role",
+              status: "active"
+            }
+          ]
+        };
+      }
+    };
+
+    await expect(loadEffectiveAccess(client, "user_1")).resolves.toEqual({
+      lifecycle: {
+        expiresAt: null,
+        status: "active"
+      },
+      permissions: new Set(["admin.users:read"]),
+      userId: "user_1"
+    });
   });
 
   it("preserves explicit suspended lifecycle state for authorize", async () => {
@@ -49,7 +95,9 @@ describe("loadEffectiveAccess", () => {
           rows: [
             {
               expires_at: expiresAt,
+              granted: true,
               permission_id: "admin.users:read",
+              source: "role",
               status: "suspended"
             }
           ]
@@ -75,12 +123,16 @@ describe("loadEffectiveAccess", () => {
           rows: [
             {
               expires_at: null,
+              granted: true,
               permission_id: "admin.users:read",
+              source: "role",
               status: "active"
             },
             {
               expires_at: null,
+              granted: true,
               permission_id: "admin.users:read",
+              source: "role",
               status: "active"
             }
           ]

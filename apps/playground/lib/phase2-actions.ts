@@ -5,6 +5,9 @@ import type { RateLimiter } from "@wpmoo/rate-limit";
 import { z } from "zod";
 import { action, type ActionAuthorizeInput } from "./action";
 
+const ADMIN_PERMISSION_MANAGER_PERMISSION_ID = "admin.permissions:update";
+const RBAC_CRITICAL_LOCK_KEY = "rbac:critical";
+
 type RateLimitOptions = Readonly<{
   limit: number;
   windowSeconds: number;
@@ -160,6 +163,29 @@ export function createAssignRoleAction(options: CreateRoleActionOptions) {
     authorize: options.authorize,
     handler: async ({ actor, input }) => {
       const assigned = await options.transaction(async (client) => {
+        const roleStage = await loadRoleStage(client, input.roleId);
+
+        if (roleStage === null) {
+          throw { code: "system.unexpected" };
+        }
+
+        if (roleStage === "archived") {
+          throw { code: "auth.forbidden" };
+        }
+
+        const grantsPermissionManager = await roleGrantsPermissionManager(
+          client,
+          input.roleId
+        );
+
+        if (grantsPermissionManager) {
+          await acquireRbacCriticalLock(client);
+
+          if (!actor.permissions.has(ADMIN_PERMISSION_MANAGER_PERMISSION_ID)) {
+            throw { code: "auth.forbidden" };
+          }
+        }
+
         const assignment = await client.query(
           `
             INSERT INTO user_role (user_id, role_id, assigned_by_user_id)
@@ -174,7 +200,7 @@ export function createAssignRoleAction(options: CreateRoleActionOptions) {
         }
 
         await recordAuditEvent(client, {
-          action: "admin.users.role.assign",
+          action: "rbac.role.grant",
           actorUserId: actor.userId,
           ipAddress: input.clientIp,
           metadata: {
@@ -201,24 +227,55 @@ export function createRevokeRoleAction(options: CreateRoleActionOptions) {
     authorize: options.authorize,
     handler: async ({ actor, input }) => {
       const revoked = await options.transaction(async (client) => {
-        if (input.roleId === "admin") {
-          // Serialize current critical RBAC mutations before re-reading guards.
-          await client.query(
-            `
-              SELECT pg_advisory_xact_lock(hashtext('rbac:critical'))
-            `
-          );
+        const grantsPermissionManager = await roleGrantsPermissionManager(
+          client,
+          input.roleId
+        );
+        const requiresCriticalGuard =
+          input.roleId === "admin" || grantsPermissionManager;
 
-          const adminCount = await client.query(
-            `
-              SELECT COUNT(*) AS count
-              FROM user_role
-              WHERE role_id = 'admin'
-            `
-          );
+        if (requiresCriticalGuard) {
+          await acquireRbacCriticalLock(client);
 
-          if (readCount(adminCount.rows[0]?.count) <= 1) {
+          if (grantsPermissionManager && input.targetUserId === actor.userId) {
             throw { code: "auth.forbidden" };
+          }
+
+          if (input.roleId === "admin") {
+            const adminCount = await client.query(
+              `
+                SELECT COUNT(*) AS count
+                FROM user_role
+                INNER JOIN "user"
+                  ON "user".id = user_role.user_id
+                INNER JOIN role
+                  ON role.id = user_role.role_id
+                  AND role.stage = 'active'
+                LEFT JOIN user_lifecycle
+                  ON user_lifecycle.user_id = "user".id
+                WHERE role_id = 'admin'
+                  AND (
+                    COALESCE(user_lifecycle.status, 'active') = 'active'
+                    OR user_lifecycle.expires_at <= now()
+                  )
+              `
+            );
+
+            if (readCount(adminCount.rows[0]?.count) <= 1) {
+              throw { code: "auth.forbidden" };
+            }
+          }
+
+          if (grantsPermissionManager) {
+            const permissionManagerCount = await countPermissionManagersExcludingUser(
+              client,
+              ADMIN_PERMISSION_MANAGER_PERMISSION_ID,
+              input.targetUserId
+            );
+
+            if (permissionManagerCount <= 0) {
+              throw { code: "auth.forbidden" };
+            }
           }
         }
 
@@ -235,7 +292,7 @@ export function createRevokeRoleAction(options: CreateRoleActionOptions) {
         }
 
         await recordAuditEvent(client, {
-          action: "admin.users.role.revoke",
+          action: "rbac.role.revoke",
           actorUserId: actor.userId,
           ipAddress: input.clientIp,
           metadata: {
@@ -255,6 +312,118 @@ export function createRevokeRoleAction(options: CreateRoleActionOptions) {
     },
     schema: roleMutationSchema
   });
+}
+
+async function countPermissionManagersExcludingUser(
+  client: BootstrapTransactionClient,
+  permissionId: string,
+  excludedUserId: string
+): Promise<number> {
+  const permissionManagerHolders = await client.query(
+    `
+      WITH lifecycle_users AS (
+        SELECT "user".id AS user_id
+        FROM "user"
+        LEFT JOIN user_lifecycle
+          ON user_lifecycle.user_id = "user".id
+        WHERE
+          COALESCE(user_lifecycle.status, 'active') = 'active'
+          OR user_lifecycle.expires_at <= now()
+      ),
+      direct_grants AS (
+        SELECT user_id
+        FROM user_permission
+        INNER JOIN lifecycle_users
+          ON lifecycle_users.user_id = user_permission.user_id
+        WHERE permission_id = $1
+          AND granted = true
+      ),
+      direct_denies AS (
+        SELECT user_id
+        FROM user_permission
+        INNER JOIN lifecycle_users
+          ON lifecycle_users.user_id = user_permission.user_id
+        WHERE permission_id = $1
+          AND granted = false
+      ),
+      role_grants AS (
+        SELECT DISTINCT user_role.user_id
+        FROM user_role
+        INNER JOIN lifecycle_users
+          ON lifecycle_users.user_id = user_role.user_id
+        INNER JOIN role_permission
+          ON role_permission.role_id = user_role.role_id
+        INNER JOIN role
+          ON role.id = user_role.role_id
+          AND role.stage = 'active'
+        WHERE role_permission.permission_id = $1
+      ),
+      effective_permissions AS (
+        SELECT user_id FROM direct_grants
+        UNION
+        SELECT user_id FROM role_grants
+      )
+      SELECT COUNT(*) AS count
+      FROM (
+        SELECT user_id
+        FROM effective_permissions
+        EXCEPT
+        SELECT user_id FROM direct_denies
+      ) AS permission_managers
+      WHERE user_id <> $2
+    `,
+    [permissionId, excludedUserId]
+  );
+
+  return readCount(permissionManagerHolders.rows[0]?.count);
+}
+
+async function loadRoleStage(
+  client: BootstrapTransactionClient,
+  roleId: string
+): Promise<string | null> {
+  const role = await client.query(
+    `
+      SELECT stage
+      FROM role
+      WHERE id = $1
+    `,
+    [roleId]
+  );
+
+  return (role.rows[0]?.stage as string | undefined) ?? null;
+}
+
+async function roleGrantsPermissionManager(
+  client: BootstrapTransactionClient,
+  roleId: string
+): Promise<boolean> {
+  const rolePermission = await client.query(
+    `
+      SELECT EXISTS(
+        SELECT 1
+        FROM role_permission
+        INNER JOIN role
+          ON role.id = role_permission.role_id
+          AND role.stage = 'active'
+        WHERE role_permission.role_id = $1
+          AND role_permission.permission_id = $2
+      ) AS grants_permission_manager
+    `,
+    [roleId, ADMIN_PERMISSION_MANAGER_PERMISSION_ID]
+  );
+
+  return (rolePermission.rows[0]?.grants_permission_manager as boolean | undefined) ??
+    false;
+}
+
+async function acquireRbacCriticalLock(client: BootstrapTransactionClient) {
+  await client.query(
+    `
+      SELECT pg_advisory_xact_lock(hashtext($1))
+    `,
+    [RBAC_CRITICAL_LOCK_KEY]
+  );
 }
 
 async function enforceRateLimit(
@@ -287,12 +456,32 @@ function constantTimeEquals(left: string, right: string): boolean {
 
 function readCount(value: unknown): number {
   if (typeof value === "number") {
+    if (!Number.isInteger(value) || !Number.isFinite(value)) {
+      throw { code: "system.unexpected" };
+    }
+
     return value;
   }
 
   if (typeof value === "string") {
-    return Number.parseInt(value, 10);
+    const parsed = Number(value);
+
+    if (!Number.isInteger(parsed)) {
+      throw { code: "system.unexpected" };
+    }
+
+    return parsed;
   }
 
-  return 0;
+  if (typeof value === "bigint") {
+    const parsed = Number(value);
+
+    if (!Number.isInteger(parsed) || !Number.isFinite(parsed)) {
+      throw { code: "system.unexpected" };
+    }
+
+    return parsed;
+  }
+
+  throw { code: "system.unexpected" };
 }

@@ -8,6 +8,10 @@ import {
   type BootstrapTransactionClient
 } from "../lib/phase2-actions.js";
 
+const normalizeQuery = (sql: string) => sql.replace(/\s+/g, " ").toLowerCase();
+const queryContains = (sql: string, fragment: string) =>
+  normalizeQuery(sql).includes(fragment);
+
 function createLimiter(allowed: boolean): RateLimiter {
   return {
     async check(check) {
@@ -115,7 +119,7 @@ describe("Phase 2 auth actions", () => {
           parameters: parameters ?? []
         });
 
-        if (sql.includes("INSERT INTO system_setting")) {
+        if (queryContains(sql, "insert into system_setting")) {
           return {
             rowCount: 1,
             rows: [{ key: "bootstrap_used" }]
@@ -158,7 +162,7 @@ describe("Phase 2 auth actions", () => {
 
     const sql = queries.map((query) => query.sql).join("\n");
     const auditQuery = queries.find((query) =>
-      query.sql.includes("INSERT INTO audit_event")
+      queryContains(query.sql, "insert into audit_event")
     );
 
     expect(sql).toContain("INSERT INTO system_setting");
@@ -198,14 +202,14 @@ describe("Phase 2 auth actions", () => {
           async query(sql) {
             queries.push(sql);
 
-            if (sql.includes("INSERT INTO system_setting")) {
+            if (queryContains(sql, "insert into system_setting")) {
               return {
                 rowCount: 1,
                 rows: [{ key: "bootstrap_used" }]
               };
             }
 
-            if (sql.includes("INSERT INTO user_role")) {
+            if (queryContains(sql, "insert into user_role")) {
               throw new Error("role assignment failed");
             }
 
@@ -254,14 +258,14 @@ describe("Phase 2 auth actions", () => {
             queries.push(sql);
             transactionStatements.push(sql);
 
-            if (sql.includes("INSERT INTO system_setting")) {
+            if (queryContains(sql, "insert into system_setting")) {
               return {
                 rowCount: 1,
                 rows: [{ key: "bootstrap_used" }]
               };
             }
 
-            if (sql.includes("UPDATE system_setting")) {
+            if (queryContains(sql, "update system_setting")) {
               throw new Error("commit marker failed");
             }
 
@@ -313,7 +317,7 @@ describe("Phase 2 auth actions", () => {
       transaction: async (callback) =>
         callback({
           async query(sql) {
-            if (sql.includes("INSERT INTO system_setting")) {
+            if (queryContains(sql, "insert into system_setting")) {
               return {
                 rowCount: 0,
                 rows: []
@@ -492,6 +496,20 @@ describe("Phase 2 admin role actions", () => {
           async query(sql, parameters) {
             queries.push({ sql, parameters: parameters ?? [] });
 
+            if (queryContains(sql, "select stage from role")) {
+              return {
+                rowCount: 1,
+                rows: [{ stage: "active" }]
+              };
+            }
+
+            if ((queryContains(sql, "select exists"))) {
+              return {
+                rowCount: 1,
+                rows: [{ grants_permission_manager: false }]
+              };
+            }
+
             return {
               rowCount: 1,
               rows: []
@@ -518,11 +536,17 @@ describe("Phase 2 admin role actions", () => {
     const sql = queries.map((query) => query.sql).join("\n");
     expect(sql).toContain("INSERT INTO user_role");
     expect(sql).toContain("INSERT INTO audit_event");
-    expect(queries[0]?.parameters).toEqual(["user_2", "admin", "admin_1"]);
-    expect(queries[1]?.parameters).toEqual([
+    expect(queries.find((query) => queryContains(query.sql, "insert into user_role"))?.parameters).toEqual([
+      "user_2",
+      "admin",
+      "admin_1"
+    ]);
+    expect(
+      queries.find((query) => queryContains(query.sql, "insert into audit_event"))?.parameters
+    ).toEqual([
       expect.any(String),
       "admin_1",
-      "admin.users.role.assign",
+      "rbac.role.grant",
       "user",
       "user_2",
       "high",
@@ -530,6 +554,102 @@ describe("Phase 2 admin role actions", () => {
       "127.0.0.1",
       expect.any(Date)
     ]);
+  });
+
+  it("rejects assigning an archived role", async () => {
+    const assignRole = createAssignRoleAction({
+      authorize: vi.fn().mockResolvedValue({
+        sessionId: "session_1",
+        userId: "admin_1",
+        permissions: new Set(["admin.users:update"])
+      }),
+      transaction: async (callback) =>
+        callback({
+          async query(sql) {
+            if (queryContains(sql, "select stage from role")) {
+              return {
+                rowCount: 1,
+                rows: [{ stage: "archived" }]
+              };
+            }
+
+            if ((queryContains(sql, "select exists"))) {
+              return {
+                rowCount: 1,
+                rows: [{ grants_permission_manager: false }]
+              };
+            }
+
+            return {
+              rowCount: 1,
+              rows: []
+            };
+          }
+        })
+    });
+
+    await expect(
+      assignRole({
+        clientIp: "127.0.0.1",
+        csrfCookie: "csrf",
+        csrfToken: "csrf",
+        roleId: "admin",
+        targetUserId: "user_2"
+      })
+    ).resolves.toEqual({
+      error: {
+        code: "auth.forbidden"
+      },
+      ok: false
+    });
+  });
+
+  it("rejects assigning a permission-manager role without actor override permission", async () => {
+    const assignRole = createAssignRoleAction({
+      authorize: vi.fn().mockResolvedValue({
+        sessionId: "session_1",
+        userId: "admin_1",
+        permissions: new Set(["admin.users:update"])
+      }),
+      transaction: async (callback) =>
+        callback({
+          async query(sql) {
+            if (queryContains(sql, "select stage from role")) {
+              return {
+                rowCount: 1,
+                rows: [{ stage: "active" }]
+              };
+            }
+
+            if ((queryContains(sql, "select exists"))) {
+              return {
+                rowCount: 1,
+                rows: [{ grants_permission_manager: true }]
+              };
+            }
+
+            return {
+              rowCount: 1,
+              rows: []
+            };
+          }
+        })
+    });
+
+    await expect(
+      assignRole({
+        clientIp: "127.0.0.1",
+        csrfCookie: "csrf",
+        csrfToken: "csrf",
+        roleId: "admin",
+        targetUserId: "user_2"
+      })
+    ).resolves.toEqual({
+      error: {
+        code: "auth.forbidden"
+      },
+      ok: false
+    });
   });
 
   it("does not audit an assign request when the role already exists", async () => {
@@ -543,6 +663,20 @@ describe("Phase 2 admin role actions", () => {
         callback({
           async query(sql) {
             queries.push(sql);
+
+            if (queryContains(sql, "select stage from role")) {
+              return {
+                rowCount: 1,
+                rows: [{ stage: "active" }]
+              };
+            }
+
+            if ((queryContains(sql, "select exists"))) {
+              return {
+                rowCount: 1,
+                rows: [{ grants_permission_manager: false }]
+              };
+            }
 
             return {
               rowCount: 0,
@@ -569,6 +703,63 @@ describe("Phase 2 admin role actions", () => {
     expect(queries.join("\n")).not.toContain("INSERT INTO audit_event");
   });
 
+  it("serializes critical lock when assigning a permission-manager role", async () => {
+    const queries: string[] = [];
+    const assignRole = createAssignRoleAction({
+      authorize: vi.fn().mockResolvedValue({
+        sessionId: "session_1",
+        userId: "admin_1",
+        permissions: new Set(["admin.users:update", "admin.permissions:update"])
+      }),
+      transaction: async (callback) =>
+        callback({
+          async query(sql) {
+            queries.push(sql);
+
+            if (queryContains(sql, "select stage from role")) {
+              return {
+                rowCount: 1,
+                rows: [{ stage: "active" }]
+              };
+            }
+
+            if ((queryContains(sql, "select exists"))) {
+              return {
+                rowCount: 1,
+                rows: [{ grants_permission_manager: true }]
+              };
+            }
+
+            return {
+              rowCount: 1,
+              rows: []
+            };
+          }
+        })
+    });
+
+    await expect(
+      assignRole({
+        clientIp: "127.0.0.1",
+        csrfCookie: "csrf",
+        csrfToken: "csrf",
+        roleId: "admin",
+        targetUserId: "user_2"
+      })
+    ).resolves.toEqual({
+      data: {
+        assigned: true
+      },
+      ok: true
+    });
+
+    const sql = queries.join("\n");
+    expect(sql).toContain("pg_advisory_xact_lock");
+    expect(sql).toContain("INSERT INTO user_role");
+    expect(sql).toContain("INSERT INTO audit_event");
+    expect(sql).toContain("role.stage = 'active'");
+  });
+
   it("revoke role action enforces the last-admin guard before mutation and audit", async () => {
     const queries: string[] = [];
     const revokeRole = createRevokeRoleAction({
@@ -581,7 +772,14 @@ describe("Phase 2 admin role actions", () => {
           async query(sql) {
             queries.push(sql);
 
-            if (sql.includes("COUNT(*)")) {
+            if ((queryContains(sql, "select exists"))) {
+              return {
+                rowCount: 1,
+                rows: [{ grants_permission_manager: false }]
+              };
+            }
+
+            if (queryContains(sql, "count(*)")) {
               return {
                 rowCount: 1,
                 rows: [{ count: "1" }]
@@ -612,8 +810,67 @@ describe("Phase 2 admin role actions", () => {
     });
     expect(queries.join("\n")).not.toContain("DELETE FROM user_role");
     expect(queries.join("\n")).not.toContain("INSERT INTO audit_event");
-    expect(queries[0]).toContain("pg_advisory_xact_lock");
-    expect(queries[1]).toContain("COUNT(*)");
+    expect(queries.join("\n")).toContain("pg_advisory_xact_lock");
+    expect(queries.join("\n")).toContain("COUNT(*)");
+    expect(
+      queryContains(
+        queries.join("\n"),
+        "coalesce(user_lifecycle.status, 'active') = 'active'"
+      )
+    ).toBeTruthy();
+  });
+
+  it("rejects a permission-manager self-revoke even when another holder remains", async () => {
+    const queries: string[] = [];
+    const revokeRole = createRevokeRoleAction({
+      authorize: vi.fn().mockResolvedValue({
+        sessionId: "session_1",
+        userId: "admin_1"
+      }),
+      transaction: async (callback) =>
+        callback({
+          async query(sql) {
+            queries.push(sql);
+
+            if (queryContains(sql, "select exists")) {
+              return {
+                rowCount: 1,
+                rows: [{ grants_permission_manager: true }]
+              };
+            }
+
+            if (queryContains(sql, "select count(*)")) {
+              return {
+                rowCount: 1,
+                rows: [{ count: "2" }]
+              };
+            }
+
+            return {
+              rowCount: 1,
+              rows: []
+            };
+          }
+        })
+    });
+
+    await expect(
+      revokeRole({
+        clientIp: "127.0.0.1",
+        csrfCookie: "csrf",
+        csrfToken: "csrf",
+        roleId: "user",
+        targetUserId: "admin_1"
+      })
+    ).resolves.toEqual({
+      error: {
+        code: "auth.forbidden"
+      },
+      ok: false
+    });
+    expect(queries.join("\n")).toContain("pg_advisory_xact_lock");
+    expect(queries.join("\n")).not.toContain("DELETE FROM user_role");
+    expect(queries.join("\n")).not.toContain("INSERT INTO audit_event");
   });
 
   it("revokes a non-last role and writes audit inside the same transaction", async () => {
@@ -628,7 +885,14 @@ describe("Phase 2 admin role actions", () => {
           async query(sql, parameters) {
             queries.push({ sql, parameters: parameters ?? [] });
 
-            if (sql.includes("COUNT(*)")) {
+            if ((queryContains(sql, "select exists"))) {
+              return {
+                rowCount: 1,
+                rows: [{ grants_permission_manager: false }]
+              };
+            }
+
+            if (queryContains(sql, "count(*)")) {
               return {
                 rowCount: 1,
                 rows: [{ count: "2" }]
@@ -659,16 +923,70 @@ describe("Phase 2 admin role actions", () => {
     });
 
     const sql = queries.map((query) => query.sql).join("\n");
-    expect(queries[0]?.sql).toContain("pg_advisory_xact_lock");
-    expect(queries[1]?.sql).toContain("COUNT(*)");
-    expect(queries[2]?.sql).toContain("DELETE FROM user_role");
-    expect(queries[3]?.sql).toContain("INSERT INTO audit_event");
+    expect(queryContains(sql, "pg_advisory_xact_lock")).toBeTruthy();
+    expect(queryContains(sql, "count(*)")).toBeTruthy();
+    expect(queryContains(sql, "delete from user_role")).toBeTruthy();
+    expect(queryContains(sql, "insert into audit_event")).toBeTruthy();
     expect(sql).toContain("DELETE FROM user_role");
     expect(sql).toContain("INSERT INTO audit_event");
-    expect(queries.find((query) => query.sql.includes("DELETE FROM user_role"))?.parameters).toEqual([
+    expect(queries.find((query) => queryContains(query.sql, "delete from user_role"))?.parameters).toEqual([
       "admin_2",
       "admin"
     ]);
+  });
+
+  it("treats malformed count results as unexpected", async () => {
+    const queries: string[] = [];
+    const revokeRole = createRevokeRoleAction({
+      authorize: vi.fn().mockResolvedValue({
+        sessionId: "session_1",
+        userId: "admin_1"
+      }),
+      transaction: async (callback) =>
+        callback({
+          async query(sql) {
+            queries.push(sql);
+
+            if (queryContains(sql, "select exists")) {
+              return {
+                rowCount: 1,
+                rows: [{ grants_permission_manager: false }]
+              };
+            }
+
+            if (queryContains(sql, "count(*)")) {
+              return {
+                rowCount: 1,
+                rows: [{ count: "nan" }]
+              };
+            }
+
+            return {
+              rowCount: 1,
+              rows: []
+            };
+          }
+        })
+    });
+
+    await expect(
+      revokeRole({
+        clientIp: "127.0.0.1",
+        csrfCookie: "csrf",
+        csrfToken: "csrf",
+        roleId: "admin",
+        targetUserId: "admin_2"
+      })
+    ).resolves.toEqual({
+      error: {
+        code: "system.unexpected"
+      },
+      ok: false
+    });
+    expect(queries.join("\n")).toContain("pg_advisory_xact_lock");
+    expect(queryContains(queries.join("\n"), "count(*)")).toBeTruthy();
+    expect(queries.join("\n")).not.toContain("DELETE FROM user_role");
+    expect(queries.join("\n")).not.toContain("INSERT INTO audit_event");
   });
 
   it("does not audit a revoke request when the role is already absent", async () => {
@@ -683,8 +1001,15 @@ describe("Phase 2 admin role actions", () => {
           async query(sql) {
             queries.push(sql);
 
+            if ((queryContains(sql, "select exists"))) {
+              return {
+                rowCount: 1,
+                rows: [{ grants_permission_manager: false }]
+              };
+            }
+
             return {
-              rowCount: sql.includes("DELETE FROM user_role") ? 0 : 1,
+              rowCount: queryContains(sql, "delete from user_role") ? 0 : 1,
               rows: [{ count: "2" }]
             };
           }
@@ -720,6 +1045,13 @@ describe("Phase 2 admin role actions", () => {
           async query(sql) {
             queries.push(sql);
 
+            if ((queryContains(sql, "select exists"))) {
+              return {
+                rowCount: 1,
+                rows: [{ grants_permission_manager: false }]
+              };
+            }
+
             return {
               rowCount: 1,
               rows: []
@@ -743,5 +1075,114 @@ describe("Phase 2 admin role actions", () => {
       ok: true
     });
     expect(queries.join("\n")).not.toContain("pg_advisory_xact_lock");
+  });
+
+  it("rejects revoking the last permission-manager holder", async () => {
+    const queries: string[] = [];
+    const revokeRole = createRevokeRoleAction({
+      authorize: vi.fn().mockResolvedValue({
+        sessionId: "session_1",
+        userId: "admin_1"
+      }),
+      transaction: async (callback) =>
+        callback({
+          async query(sql) {
+            queries.push(sql);
+
+            if ((queryContains(sql, "select exists"))) {
+              return {
+                rowCount: 1,
+                rows: [{ grants_permission_manager: true }]
+              };
+            }
+
+            if (queryContains(sql, "select count(*)")) {
+              return {
+                rowCount: 1,
+                rows: [{ count: "0" }]
+              };
+            }
+
+            return {
+              rowCount: 1,
+              rows: []
+            };
+          }
+        })
+    });
+
+    await expect(
+      revokeRole({
+        clientIp: "127.0.0.1",
+        csrfCookie: "csrf",
+        csrfToken: "csrf",
+        roleId: "user",
+        targetUserId: "admin_1"
+      })
+    ).resolves.toEqual({
+      error: {
+        code: "auth.forbidden"
+      },
+      ok: false
+    });
+    expect(queries.join("\n")).toContain("pg_advisory_xact_lock");
+    expect(queries.join("\n")).not.toContain("DELETE FROM user_role");
+    expect(queries.join("\n")).not.toContain("INSERT INTO audit_event");
+  });
+
+  it("allows revoking a permission-manager role when another holder remains", async () => {
+    const queries: string[] = [];
+    const revokeRole = createRevokeRoleAction({
+      authorize: vi.fn().mockResolvedValue({
+        sessionId: "session_1",
+        userId: "admin_1"
+      }),
+      transaction: async (callback) =>
+        callback({
+          async query(sql) {
+            queries.push(sql);
+
+            if ((queryContains(sql, "select exists"))) {
+              return {
+                rowCount: 1,
+                rows: [{ grants_permission_manager: true }]
+              };
+            }
+
+            if (queryContains(sql, "select count(*)")) {
+              return {
+                rowCount: 1,
+                rows: [{ count: "2" }]
+              };
+            }
+
+            return {
+              rowCount: 1,
+              rows: []
+            };
+          }
+        })
+    });
+
+    await expect(
+      revokeRole({
+        clientIp: "127.0.0.1",
+        csrfCookie: "csrf",
+        csrfToken: "csrf",
+        roleId: "user",
+        targetUserId: "admin_2"
+      })
+    ).resolves.toEqual({
+      data: {
+        revoked: true
+      },
+      ok: true
+    });
+    const sql = queries.join("\n");
+    expect(sql).toContain("pg_advisory_xact_lock");
+    expect(sql).toContain("role.stage = 'active'");
+    expect(sql).toContain("permission_managers");
+    expect(sql).toContain("DELETE FROM user_role");
+    expect(sql).toContain("INSERT INTO audit_event");
   });
 });

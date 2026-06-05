@@ -229,6 +229,32 @@ function catalogPermissionIds() {
   return new Set([...contents.matchAll(/id:\s*["']([^"']+)["']/g)].map((match) => match[1]));
 }
 
+function permissionSeedIds() {
+  const filePath = path.join(root, "packages/db/src/seed-data.ts");
+  const contents = read(filePath);
+  const body = contents.match(
+    /export const corePermissionSeeds = \[([\s\S]*?)\] as const satisfies readonly CorePermissionSeed\[];/
+  )?.[1];
+
+  if (!body) {
+    fail("packages/db/src/seed-data.ts does not expose corePermissionSeeds in the expected shape.");
+    return new Set();
+  }
+
+  return new Set([...body.matchAll(/id:\s*["']([^"']+)["']/g)].map((match) => match[1]));
+}
+
+function checkPermissionCatalogSeedsStayInSync() {
+  const catalogIds = [...catalogPermissionIds()].sort();
+  const seedIds = [...permissionSeedIds()].sort();
+
+  if (JSON.stringify(catalogIds) !== JSON.stringify(seedIds)) {
+    fail(
+      `RBAC catalog and DB permission seeds drifted. catalog=[${catalogIds.join(", ")}] seeds=[${seedIds.join(", ")}].`
+    );
+  }
+}
+
 function checkActionPolicies() {
   const actions = parseActionRegistry();
   const catalog = catalogPermissionIds();
@@ -294,6 +320,7 @@ checkNoStaticAdminFixturesInRoutes();
 checkDbPackageIsBottomLayer();
 checkUiPackageDoesNotImportServerPackages();
 checkBannedUiDependencies();
+checkPermissionCatalogSeedsStayInSync();
 checkActionPolicies();
 checkDocumentedScriptsExist();
 

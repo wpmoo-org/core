@@ -21,7 +21,7 @@ describe("@wpmoo/audit", () => {
 
     await expect(
       recordAuditEvent(client, {
-        action: "admin.users.role.assign",
+        action: "rbac.role.grant",
         actorUserId: "admin_1",
         id: "audit_1",
         ipAddress: "127.0.0.1",
@@ -43,7 +43,7 @@ describe("@wpmoo/audit", () => {
     expect(queries[0]?.parameters).toEqual([
       "audit_1",
       "admin_1",
-      "admin.users.role.assign",
+      "rbac.role.grant",
       "user",
       "user_1",
       "high",

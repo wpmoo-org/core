@@ -33,6 +33,10 @@ const actor = {
   userId: "admin@playground"
 };
 
+const normalizeQuery = (sql: string) => sql.replace(/\s+/g, " ").toLowerCase();
+const queryContains = (sql: string, fragment: string) =>
+  normalizeQuery(sql).includes(fragment);
+
 const DEFAULT_ASSIGNMENTS = [
   ["admin@example.test", ["admin"]],
   ["user@example.test", ["user"]]
@@ -49,7 +53,12 @@ function createFormData(input: Record<string, string>) {
 }
 
 function createRoleTransaction(
-  initialAssignments: readonly (readonly [string, readonly ("admin" | "user")[]])[] = DEFAULT_ASSIGNMENTS
+  initialAssignments: readonly (readonly [string, readonly ("admin" | "user")[]])[] = DEFAULT_ASSIGNMENTS,
+  options: Readonly<{
+    permissionManagerRoles?: Readonly<Record<string, boolean>>;
+    roleStages?: Readonly<Record<string, "active" | "archived">>;
+    permissionManagerHolders?: number;
+  }> = {}
 ): BootstrapTransaction {
   const roleAssignments = new Map<string, Set<"admin" | "user">>(
     initialAssignments.map(([userId, roles]) => [userId, new Set(roles)])
@@ -58,7 +67,28 @@ function createRoleTransaction(
   return async (callback) => {
     return callback({
       async query(sql, parameters = []) {
-        if (sql.includes("INSERT INTO user_role")) {
+        if (queryContains(sql, "select stage from role")) {
+          const roleId = String(parameters[0] ?? "");
+          const stage = options.roleStages?.[roleId] ?? "active";
+
+          return {
+            rowCount: 1,
+            rows: [{ stage }]
+          };
+        }
+
+        if (queryContains(sql, "select exists")) {
+          const roleId = String(parameters[0] ?? "");
+          const grantsPermissionManager =
+            options.permissionManagerRoles?.[roleId] ?? false;
+
+          return {
+            rowCount: 1,
+            rows: [{ grants_permission_manager: grantsPermissionManager }]
+          };
+        }
+
+        if (queryContains(sql, "insert into user_role")) {
           const targetUserId = String(parameters[0] ?? "");
           const roleId = String(parameters[1]) as "admin" | "user";
           const roles = roleAssignments.get(targetUserId) ?? new Set();
@@ -75,7 +105,7 @@ function createRoleTransaction(
           };
         }
 
-        if (sql.includes("SELECT COUNT(*) AS count FROM user_role")) {
+        if (queryContains(sql, "select count(*) as count from user_role")) {
           let count = 0;
 
           for (const roles of roleAssignments.values()) {
@@ -90,7 +120,16 @@ function createRoleTransaction(
           };
         }
 
-        if (sql.includes("DELETE FROM user_role")) {
+        if (queryContains(sql, "select count(*) as count") &&
+          queryContains(sql, "permission_managers")
+        ) {
+          return {
+            rowCount: 1,
+            rows: [{ count: String(options.permissionManagerHolders ?? 2) }]
+          };
+        }
+
+        if (queryContains(sql, "delete from user_role")) {
           const targetUserId = String(parameters[0] ?? "");
           const roleId = String(parameters[1]) as "admin" | "user";
           const roles = roleAssignments.get(targetUserId) ?? new Set();

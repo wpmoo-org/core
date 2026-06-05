@@ -2,27 +2,25 @@ import {
   authorizeAdminPage,
   type AdminPageAuthorizeContext
 } from "../../../lib/phase2-access";
+import {
+  createStaticPageQueryClient,
+  loadAdminUsersPage,
+  phase2AdminUserRows,
+  phase2StaticAdminContext
+} from "../../../lib/phase2-pages";
 
 export const dynamic = "force-dynamic";
-
-const users = [
-  {
-    email: "admin@example.test",
-    name: "Admin User",
-    role: "admin"
-  },
-  {
-    email: "user@example.test",
-    name: "Core User",
-    role: "user"
-  }
-];
 
 export async function authorizeAdminUsersPage(context: AdminPageAuthorizeContext) {
   return authorizeAdminPage({ action: "read", resource: "admin.users" }, context);
 }
 
-export default function AdminUsersPage() {
+export default async function AdminUsersPage() {
+  const page = await loadAdminUsersPage(
+    phase2StaticAdminContext,
+    createStaticPageQueryClient(phase2AdminUserRows)
+  );
+
   return (
     <main className="shell">
       <section className="proof-panel wide">
@@ -37,7 +35,7 @@ export default function AdminUsersPage() {
             </tr>
           </thead>
           <tbody>
-            {users.map((user) => (
+            {page.users.map((user) => (
               <tr key={user.email}>
                 <td>{user.name}</td>
                 <td>{user.email}</td>

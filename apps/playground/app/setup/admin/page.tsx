@@ -1,18 +1,22 @@
-import {
-  resolveRegistrationAccess,
-  type RegistrationMode
-} from "../../../lib/phase2-access";
+import { notFound } from "next/navigation";
+import type { RegistrationMode } from "../../../lib/phase2-access";
+import { loadSetupAdminPage, readRegistrationMode } from "../../../lib/phase2-pages";
 
 export const dynamic = "force-dynamic";
 
 export function resolveBootstrapPageAccess(mode: RegistrationMode) {
-  return resolveRegistrationAccess({
-    isBootstrapException: true,
-    mode
-  });
+  return loadSetupAdminPage({ mode }).access;
 }
 
 export default function SetupAdminPage() {
+  const page = loadSetupAdminPage({
+    mode: readRegistrationMode(process.env.REGISTRATION_MODE)
+  });
+
+  if (!page.access.allowed) {
+    notFound();
+  }
+
   return (
     <main className="shell">
       <section className="proof-panel">

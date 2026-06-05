@@ -235,8 +235,7 @@ describe("Phase 2 auth actions", () => {
 
   it("rolls back the transaction when bootstrap fails after writing audit", async () => {
     const queries: string[] = [];
-    let committed = false;
-    let rolledBack = false;
+    const committedStatements: string[] = [];
     const claim = createBootstrapClaimAction({
       adminBootstrapToken: "a".repeat(32),
       authorize: vi.fn().mockResolvedValue({
@@ -249,35 +248,33 @@ describe("Phase 2 auth actions", () => {
       },
       rateLimiter: createLimiter(true),
       transaction: async (callback) => {
-        try {
-          const result = await callback({
-            async query(sql) {
-              queries.push(sql);
+        const transactionStatements: string[] = [];
+        const result = await callback({
+          async query(sql) {
+            queries.push(sql);
+            transactionStatements.push(sql);
 
-              if (sql.includes("INSERT INTO system_setting")) {
-                return {
-                  rowCount: 1,
-                  rows: [{ key: "bootstrap_used" }]
-                };
-              }
-
-              if (sql.includes("UPDATE system_setting")) {
-                throw new Error("commit marker failed");
-              }
-
+            if (sql.includes("INSERT INTO system_setting")) {
               return {
                 rowCount: 1,
-                rows: []
+                rows: [{ key: "bootstrap_used" }]
               };
             }
-          });
-          committed = true;
 
-          return result;
-        } catch (error) {
-          rolledBack = true;
-          throw error;
-        }
+            if (sql.includes("UPDATE system_setting")) {
+              throw new Error("commit marker failed");
+            }
+
+            return {
+              rowCount: 1,
+              rows: []
+            };
+          }
+        });
+
+        committedStatements.push(...transactionStatements);
+
+        return result;
       }
     });
 
@@ -295,11 +292,13 @@ describe("Phase 2 auth actions", () => {
       ok: false
     });
     expect(queries.join("\n")).toContain("INSERT INTO audit_event");
-    expect(committed).toBe(false);
-    expect(rolledBack).toBe(true);
+    expect(committedStatements.join("\n")).not.toContain("INSERT INTO audit_event");
   });
 
   it("rejects a second bootstrap claim when the DB lock already exists", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const claim = createBootstrapClaimAction({
       adminBootstrapToken: "a".repeat(32),
       authorize: vi.fn().mockResolvedValue({
@@ -329,19 +328,112 @@ describe("Phase 2 auth actions", () => {
         })
     });
 
-    await expect(
-      claim({
-        clientIp: "127.0.0.1",
-        csrfCookie: "csrf",
-        csrfToken: "csrf",
-        token: "a".repeat(32)
-      })
-    ).resolves.toEqual({
+    const result = await claim({
+      clientIp: "127.0.0.1",
+      csrfCookie: "csrf-cookie-secret",
+      csrfToken: "csrf-cookie-secret",
+      token: "a".repeat(32)
+    });
+
+    expect(result).toEqual({
       error: {
         code: "bootstrap.invalid_or_used"
       },
       ok: false
     });
+    expect(JSON.stringify(result)).not.toContain("csrf-cookie-secret");
+    expect(JSON.stringify(result)).not.toContain("a".repeat(32));
+    expect(consoleError).not.toHaveBeenCalled();
+    expect(consoleInfo).not.toHaveBeenCalled();
+    expect(consoleWarn).not.toHaveBeenCalled();
+
+    consoleError.mockRestore();
+    consoleInfo.mockRestore();
+    consoleWarn.mockRestore();
+  });
+
+  it("does not expose raw login credentials in invalid credential responses or logs", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const login = createLoginAction({
+      rateLimit: {
+        limit: 3,
+        windowSeconds: 60
+      },
+      rateLimiter: createLimiter(true)
+    });
+
+    const result = await login({
+      clientIp: "127.0.0.1",
+      email: "missing@example.test",
+      password: "raw-password-secret"
+    });
+
+    expect(result).toEqual({
+      error: {
+        code: "auth.invalid_credentials"
+      },
+      ok: false
+    });
+    expect(JSON.stringify(result)).not.toContain("missing@example.test");
+    expect(JSON.stringify(result)).not.toContain("raw-password-secret");
+    expect(consoleError).not.toHaveBeenCalled();
+    expect(consoleInfo).not.toHaveBeenCalled();
+    expect(consoleWarn).not.toHaveBeenCalled();
+
+    consoleError.mockRestore();
+    consoleInfo.mockRestore();
+    consoleWarn.mockRestore();
+  });
+
+  it("keeps unknown-email and wrong-password login attempts on the same branch", async () => {
+    const checks: Array<Readonly<{ scope: string; subject: string }>> = [];
+    const login = createLoginAction({
+      rateLimit: {
+        limit: 3,
+        windowSeconds: 60
+      },
+      rateLimiter: {
+        async check(check) {
+          checks.push({
+            scope: check.scope,
+            subject: `${check.subject.type}:${check.subject.value}`
+          });
+
+          return {
+            allowed: true,
+            limit: check.limit,
+            remaining: check.limit - 1,
+            resetAt: new Date("2026-06-04T12:01:00.000Z"),
+            retryAfterSeconds: null
+          };
+        }
+      }
+    });
+
+    const unknownEmailResult = await login({
+      clientIp: "127.0.0.1",
+      email: "missing@example.test",
+      password: "incorrect-password"
+    });
+    const wrongPasswordResult = await login({
+      clientIp: "127.0.0.1",
+      email: "admin@example.test",
+      password: "incorrect-password"
+    });
+
+    expect(unknownEmailResult).toEqual(wrongPasswordResult);
+    expect(checks).toEqual([
+      {
+        scope: "auth.login",
+        subject: "ip:127.0.0.1"
+      },
+      {
+        scope: "auth.login",
+        subject: "ip:127.0.0.1"
+      }
+    ]);
   });
 
   it("rejects same-length bootstrap token mismatches", async () => {

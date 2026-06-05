@@ -2,27 +2,25 @@ import {
   authorizeAdminPage,
   type AdminPageAuthorizeContext
 } from "../../../lib/phase2-access";
+import {
+  createStaticPageQueryClient,
+  loadAdminAuditPage,
+  phase2AuditRows,
+  phase2StaticAdminContext
+} from "../../../lib/phase2-pages";
 
 export const dynamic = "force-dynamic";
-
-const auditRows = [
-  {
-    action: "system.admin.bootstrap",
-    risk: "critical",
-    target: "user:admin"
-  },
-  {
-    action: "admin.users.role.assign",
-    risk: "high",
-    target: "user:core"
-  }
-];
 
 export async function authorizeAdminAuditPage(context: AdminPageAuthorizeContext) {
   return authorizeAdminPage({ action: "read", resource: "admin.audit" }, context);
 }
 
-export default function AdminAuditPage() {
+export default async function AdminAuditPage() {
+  const page = await loadAdminAuditPage(
+    phase2StaticAdminContext,
+    createStaticPageQueryClient(phase2AuditRows)
+  );
+
   return (
     <main className="shell">
       <section className="proof-panel wide">
@@ -37,7 +35,7 @@ export default function AdminAuditPage() {
             </tr>
           </thead>
           <tbody>
-            {auditRows.map((row) => (
+            {page.auditRows.map((row) => (
               <tr key={`${row.action}:${row.target}`}>
                 <td>{row.action}</td>
                 <td>{row.target}</td>

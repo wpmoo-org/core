@@ -1,15 +1,22 @@
-import {
-  resolveRegistrationAccess,
-  type RegistrationMode
-} from "../../lib/phase2-access";
+import { notFound } from "next/navigation";
+import type { RegistrationMode } from "../../lib/phase2-access";
+import { loadRegisterPage, readRegistrationMode } from "../../lib/phase2-pages";
 
 export const dynamic = "force-dynamic";
 
 export function resolveRegisterPageAccess(mode: RegistrationMode) {
-  return resolveRegistrationAccess({ mode });
+  return loadRegisterPage({ mode }).access;
 }
 
 export default function RegisterPage() {
+  const page = loadRegisterPage({
+    mode: readRegistrationMode(process.env.REGISTRATION_MODE)
+  });
+
+  if (!page.access.allowed) {
+    notFound();
+  }
+
   return (
     <main className="shell">
       <section className="proof-panel">

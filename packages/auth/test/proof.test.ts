@@ -143,6 +143,31 @@ describe("Better Auth proof pack", () => {
     expect(signUpSource).not.toContain("createVerificationValue({");
   });
 
+  it("proves verification.value is not the reset or email verification bearer token path", () => {
+    const betterAuthDistDir = getBetterAuthDistDir();
+    const passwordRouteSource = readFileSync(
+      resolve(betterAuthDistDir, "api/routes/password.mjs"),
+      "utf8"
+    );
+    const emailVerificationSource = readFileSync(
+      resolve(betterAuthDistDir, "api/routes/email-verification.mjs"),
+      "utf8"
+    );
+    const signUpSource = readFileSync(
+      resolve(betterAuthDistDir, "api/routes/sign-up.mjs"),
+      "utf8"
+    );
+
+    expect(passwordRouteSource).toContain("identifier: `reset-password:${verificationToken}`");
+    expect(passwordRouteSource).toContain("value: user.user.id");
+    expect(passwordRouteSource).not.toContain("value: verificationToken");
+    expect(passwordRouteSource).not.toContain("value: token");
+    expect(emailVerificationSource).toContain("async function createEmailVerificationToken");
+    expect(emailVerificationSource).not.toContain("value: token");
+    expect(signUpSource).toContain("const token = await createEmailVerificationToken");
+    expect(signUpSource).not.toContain("value: token");
+  });
+
   it("proves token-value plugins and persisted-secret flows are absent from the auth config", () => {
     const authConfig = createAuthConfig({
       database: {} as Parameters<typeof createAuthConfig>[0]["database"],

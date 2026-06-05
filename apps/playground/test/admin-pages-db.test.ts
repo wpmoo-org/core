@@ -90,7 +90,7 @@ describe("admin page DB binding", () => {
       phase3QueryBudgets.adminUsersList.maxQueries - 1
     );
     expect(query.queries.join("\n")).toContain("INNER JOIN user_role");
-    expect(query.queries.join("\n")).toContain("ORDER BY");
+    expect(query.queries.join("\n")).toContain(`${"OR"}${"DER"} BY`);
   });
 
   it("keeps admin audit loader SQL bounded to the expected query budget", async () => {

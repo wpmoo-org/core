@@ -118,6 +118,23 @@ describe("require-action-wrapper eslint rule", () => {
     expect(messages[0]?.message).toContain("routeAction()");
   });
 
+  it("allows the Better Auth provider route to export the provider handler", () => {
+    const messages = linter.verify(
+      `
+      async function handleAuth(request) {
+        const { createPlaygroundAuth } = await import("../../../../lib/auth");
+        return createPlaygroundAuth().handler(request);
+      }
+      export const GET = handleAuth;
+      export const POST = handleAuth;
+      `,
+      config,
+      { filename: "apps/playground/app/api/auth/[...all]/route.ts" }
+    );
+
+    expect(messages).toEqual([]);
+  });
+
   it("flags route handlers exported through the server action wrapper", () => {
     const messages = linter.verify(
       `

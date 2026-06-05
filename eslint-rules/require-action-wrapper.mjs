@@ -23,6 +23,7 @@ export default {
           hasUseServerDirective(program) ||
           /(?:^|\/)app\/.*\/actions?\.[cm]?[jt]sx?$/.test(filename);
         const isRouteHandler = /(?:^|\/)route\.[cm]?[jt]sx?$/.test(filename);
+        const isBetterAuthRouteHandler = /(?:^|\/)app\/api\/auth\/\[\.\.\.all\]\/route\.[cm]?[jt]sx?$/.test(filename);
 
         if (!isServerActionFile && !isRouteHandler) {
           return;
@@ -51,6 +52,10 @@ export default {
             for (const declarator of declaration.declarations) {
               if (isRouteHandler) {
                 const routeMethod = getDeclaratorName(declarator);
+
+                if (isBetterAuthRouteHandler && isAuthHandlerExport(declarator)) {
+                  continue;
+                }
 
                 if (!isMutatingRouteMethod(routeMethod)) {
                   continue;
@@ -103,4 +108,18 @@ function isCallTo(node, name) {
   }
 
   return node.callee.type === "Identifier" && node.callee.name === name;
+}
+
+function isAuthHandlerExport(declarator) {
+  const routeMethod = getDeclaratorName(declarator);
+
+  if (!isMutatingRouteMethod(routeMethod)) {
+    return false;
+  }
+
+  if (declarator.init?.type !== "Identifier") {
+    return false;
+  }
+
+  return declarator.init.name === "handleAuth";
 }

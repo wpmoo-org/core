@@ -35,12 +35,14 @@ describe("admin shell", () => {
     const usersPage = readFileSync(resolve(adminDir, "users/page.tsx"), "utf8");
     const auditPage = readFileSync(resolve(adminDir, "audit/page.tsx"), "utf8");
 
-    expect(usersPage).toContain("authorizeAdminPage");
+    expect(usersPage).toContain("createAdminPageContext");
+    expect(usersPage).toContain("createPlaygroundQueryClient");
     expect(usersPage).toContain("admin-panel");
     expect(usersPage).toContain("AdminUserRoles");
     expect(usersPage).not.toContain('className="shell"');
 
-    expect(auditPage).toContain("authorizeAdminPage");
+    expect(auditPage).toContain("createAdminPageContext");
+    expect(auditPage).toContain("createPlaygroundQueryClient");
     expect(auditPage).toContain("admin-panel");
     expect(auditPage).not.toContain('className="shell"');
   });

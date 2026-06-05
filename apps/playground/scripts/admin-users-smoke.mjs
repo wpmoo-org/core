@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { URL } from "node:url";
 import { chromium } from "@playwright/test";
 
 const baseUrl = process.env.PLAYGROUND_SMOKE_URL ?? "http://127.0.0.1:3000";

@@ -3,7 +3,7 @@ import {
   formatDate,
   formatMoney,
   formatNumber
-} from "../src/data-table/format.js";
+} from "../src/data-table/format";
 
 describe("formatDate", () => {
   it("formats dates with a fixed UTC timezone and stable English layout", () => {

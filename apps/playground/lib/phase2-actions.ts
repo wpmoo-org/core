@@ -3,7 +3,7 @@ import { recordAuditEvent } from "@wpmoo/audit";
 import type { AuthorizedActor } from "@wpmoo/rbac";
 import type { RateLimiter } from "@wpmoo/rate-limit";
 import { z } from "zod";
-import { action, type ActionAuthorizeInput } from "./action.js";
+import { action, type ActionAuthorizeInput } from "./action";
 
 type RateLimitOptions = Readonly<{
   limit: number;

@@ -9,7 +9,7 @@ export default {
     },
     messages: {
       rawServerAction:
-        "Mutating server actions must be exported through action().",
+        "Mutating server actions must be exported through action() or actionState().",
       rawRouteHandler:
         "Mutating route handlers must be exported through routeAction()."
     },
@@ -66,7 +66,10 @@ export default {
                 continue;
               }
 
-              if (!isCallTo(declarator.init, "action")) {
+              if (
+                !isCallTo(declarator.init, "action") &&
+                !isCallTo(declarator.init, "actionState")
+              ) {
                 context.report({
                   node: declarator,
                   messageId: "rawServerAction"

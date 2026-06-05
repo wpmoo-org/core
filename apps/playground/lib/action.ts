@@ -48,6 +48,13 @@ export const actionRegistry = {
     requireCsrf: true,
     resource: "admin.users",
     risk: "high"
+  },
+  "admin.users.role.bulk_assign": {
+    action: "bulk_assign",
+    audit: true,
+    requireCsrf: true,
+    resource: "admin.users",
+    risk: "high"
   }
 } as const;
 
@@ -88,6 +95,21 @@ export type RouteActionOptions<Input extends object, Actor> = Readonly<{
   authorize: (input: ActionAuthorizeInput<Input>) => Promise<Actor>;
   handler: (context: RouteActionContext<Input, Actor>) => Promise<Response>;
   parse: (request: Request) => Promise<unknown>;
+  schema: z.ZodType<Input>;
+}>;
+
+export type ActionStateContext<State, Input, Actor> =
+  ActionContext<Input, Actor> &
+    Readonly<{
+      formData: FormData;
+      previousState: State;
+    }>;
+
+export type ActionStateOptions<State, Input extends object, Actor> = Readonly<{
+  authorize: (input: ActionAuthorizeInput<Input>) => Promise<Actor>;
+  handler: (context: ActionStateContext<State, Input, Actor>) => Promise<State>;
+  onFailure: (previousState: State, code: ErrorCode) => Promise<State> | State;
+  parse: (formData: FormData) => Promise<unknown> | unknown;
   schema: z.ZodType<Input>;
 }>;
 
@@ -143,6 +165,52 @@ export function action<Input extends object, Actor, Output>(
       };
     } catch (error) {
       return failure(getStableErrorCode(error));
+    }
+  };
+}
+
+export function actionState<State, Input extends object, Actor>(
+  actionId: ActionId,
+  options: ActionStateOptions<State, Input, Actor>
+) {
+  const policy = actionRegistry[actionId];
+
+  return async function wrappedActionState(
+    previousState: State,
+    formData: FormData
+  ): Promise<State> {
+    let rawInput: unknown;
+
+    try {
+      rawInput = await options.parse(formData);
+    } catch {
+      return options.onFailure(previousState, "validation.invalid_input");
+    }
+
+    const parsed = options.schema.safeParse(rawInput);
+
+    if (!parsed.success) {
+      return options.onFailure(previousState, "validation.invalid_input");
+    }
+
+    try {
+      assertCsrf(policy, parsed.data);
+
+      const actor = await options.authorize({
+        action: policy.action,
+        input: parsed.data,
+        resource: policy.resource
+      });
+
+      return await options.handler({
+        actor,
+        formData,
+        input: parsed.data,
+        policy,
+        previousState
+      });
+    } catch (error) {
+      return options.onFailure(previousState, getStableErrorCode(error));
     }
   };
 }

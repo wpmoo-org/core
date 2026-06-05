@@ -137,7 +137,7 @@ describe("Phase 2 access policy", () => {
   });
 
   it("binds admin route modules to the server-side authorize helper", async () => {
-    const appDir = join(process.cwd(), "apps/playground/app");
+    const appDir = join(import.meta.dirname, "../app");
     const adminUsersPage = readFileSync(join(appDir, "admin/users/page.tsx"), "utf8");
     const adminAuditPage = readFileSync(join(appDir, "admin/audit/page.tsx"), "utf8");
 
@@ -150,8 +150,8 @@ describe("Phase 2 access policy", () => {
   });
 
   it("binds registration route modules to the registration mode helper", () => {
-    const appDir = join(process.cwd(), "apps/playground/app");
-    const libDir = join(process.cwd(), "apps/playground/lib");
+    const appDir = join(import.meta.dirname, "../app");
+    const libDir = join(import.meta.dirname, "../lib");
     const registerPage = readFileSync(join(appDir, "register/page.tsx"), "utf8");
     const bootstrapPage = readFileSync(join(appDir, "setup/admin/page.tsx"), "utf8");
     const pageLoaders = readFileSync(join(libDir, "phase2-pages.ts"), "utf8");

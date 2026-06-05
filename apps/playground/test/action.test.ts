@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { action, routeAction, safeRedirectTarget } from "../lib/action.js";
+import {
+  action,
+  actionState,
+  routeAction,
+  safeRedirectTarget
+} from "../lib/action.js";
 
 describe("action", () => {
   it("validates input before authorize and handler run", async () => {
@@ -63,6 +68,112 @@ describe("action", () => {
     });
     expect(authorize).not.toHaveBeenCalled();
     expect(handler).not.toHaveBeenCalled();
+  });
+});
+
+describe("actionState", () => {
+  const initialState = {
+    code: null as null | string,
+    status: "idle" as "error" | "idle" | "success"
+  };
+
+  it("validates form input before authorize and handler run", async () => {
+    const authorize = vi.fn();
+    const handler = vi.fn();
+    const submit = actionState("proof.noop", {
+      authorize,
+      handler,
+      onFailure: (_previousState, code) => ({
+        code,
+        status: "error"
+      }),
+      parse: (formData) => ({
+        name: String(formData.get("name") ?? "")
+      }),
+      schema: z.object({ name: z.string().min(1) })
+    });
+    const formData = new FormData();
+    formData.set("name", "");
+
+    await expect(submit(initialState, formData)).resolves.toEqual({
+      code: "validation.invalid_input",
+      status: "error"
+    });
+    expect(authorize).not.toHaveBeenCalled();
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("requires CSRF before authorizing state-changing adapters", async () => {
+    const authorize = vi.fn();
+    const handler = vi.fn();
+    const submit = actionState("admin.users.role.assign", {
+      authorize,
+      handler,
+      onFailure: (_previousState, code) => ({
+        code,
+        status: "error"
+      }),
+      parse: (formData) => ({
+        clientIp: "127.0.0.1",
+        csrfCookie: formData.get("csrfCookie") ?? undefined,
+        csrfToken: formData.get("csrfToken") ?? undefined,
+        roleId: "admin",
+        targetUserId: "user@example.test"
+      }),
+      schema: z.object({
+        clientIp: z.string().min(1),
+        csrfCookie: z.string().min(1).optional(),
+        csrfToken: z.string().min(1).optional(),
+        roleId: z.literal("admin"),
+        targetUserId: z.string().min(1)
+      })
+    });
+
+    await expect(submit(initialState, new FormData())).resolves.toEqual({
+      code: "auth.forbidden",
+      status: "error"
+    });
+    expect(authorize).not.toHaveBeenCalled();
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("authorizes before running action-state handlers", async () => {
+    const authorize = vi.fn().mockResolvedValue({ id: "user_1" });
+    const handler = vi.fn().mockResolvedValue({
+      code: null,
+      status: "success"
+    });
+    const submit = actionState("proof.noop", {
+      authorize,
+      handler,
+      onFailure: (_previousState, code) => ({
+        code,
+        status: "error"
+      }),
+      parse: (formData) => ({
+        name: String(formData.get("name") ?? "")
+      }),
+      schema: z.object({ name: z.string().min(1) })
+    });
+    const formData = new FormData();
+    formData.set("name", "Core");
+
+    await expect(submit(initialState, formData)).resolves.toEqual({
+      code: null,
+      status: "success"
+    });
+    expect(authorize).toHaveBeenCalledWith({
+      action: "execute",
+      input: { name: "Core" },
+      resource: "proof"
+    });
+    expect(handler).toHaveBeenCalledWith({
+      actor: { id: "user_1" },
+      formData,
+      input: { name: "Core" },
+      policy: expect.objectContaining({ resource: "proof" }),
+      previousState: initialState
+    });
   });
 });
 

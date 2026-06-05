@@ -54,6 +54,26 @@ describe("require-action-wrapper eslint rule", () => {
     expect(messages).toEqual([]);
   });
 
+  it("allows exported server action state adapters created through actionState()", () => {
+    const messages = linter.verify(
+      `
+      "use server";
+      import { actionState } from "../lib/action.js";
+      export const saveThing = actionState("proof.noop", {
+        authorize: async () => ({}),
+        handler: async () => ({}),
+        onFailure: () => ({}),
+        parse: () => ({}),
+        schema: proofSchema
+      });
+      `,
+      config,
+      { filename: "apps/playground/app/admin/actions.ts" }
+    );
+
+    expect(messages).toEqual([]);
+  });
+
   it("flags raw server action exports that bypass action()", () => {
     const messages = linter.verify(
       `

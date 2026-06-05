@@ -12,5 +12,16 @@
     "build": "tsc -p tsconfig.json",
     "test": "vitest run --root ../.. packages/ui/test",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.16",
+    "react": "19.2.7"
+  },
+  "peerDependencies": {
+    "react": "19.2.7"
+  },
+  "dependencies": {
+    "@tanstack/react-table": "8.21.3",
+    "nuqs": "2.8.9"
   }
 }

@@ -1,6 +1,6 @@
 import { drizzleAdapter, type DB } from "@better-auth/drizzle-adapter";
 import { authSchema } from "@wpmoo/db/schema/auth";
-import { betterAuth } from "better-auth";
+import { betterAuth, type BetterAuthOptions } from "better-auth/minimal";
 import { coreVerificationStorage } from "./verification-storage.js";
 
 export type CreateAuthOptions = {
@@ -9,11 +9,15 @@ export type CreateAuthOptions = {
   useSecureCookies: boolean;
 };
 
-export function createAuth(options: CreateAuthOptions) {
+export type CoreAuth = Readonly<{
+  handler: (request: Request) => Promise<Response>;
+}>;
+
+export function createAuth(options: CreateAuthOptions): CoreAuth {
   return betterAuth(createAuthConfig(options));
 }
 
-export function createAuthConfig(options: CreateAuthOptions) {
+export function createAuthConfig(options: CreateAuthOptions): BetterAuthOptions {
   return {
     appName: "WPMoo Core",
     database: drizzleAdapter(options.database, {

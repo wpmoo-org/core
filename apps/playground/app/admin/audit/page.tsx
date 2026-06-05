@@ -1,8 +1,4 @@
 import {
-  authorizeAdminPage,
-  type AdminPageAuthorizeContext
-} from "../../../lib/phase2-access";
-import {
   createStaticPageQueryClient,
   loadAdminAuditPage,
   phase2AuditRows,
@@ -10,10 +6,6 @@ import {
 } from "../../../lib/phase2-pages";
 
 export const dynamic = "force-dynamic";
-
-export async function authorizeAdminAuditPage(context: AdminPageAuthorizeContext) {
-  return authorizeAdminPage({ action: "read", resource: "admin.audit" }, context);
-}
 
 export default async function AdminAuditPage() {
   const page = await loadAdminAuditPage(

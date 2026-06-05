@@ -138,15 +138,16 @@ describe("Phase 2 access policy", () => {
 
   it("binds admin route modules to the server-side authorize helper", async () => {
     const appDir = join(import.meta.dirname, "../app");
+    const libDir = join(import.meta.dirname, "../lib");
     const adminUsersPage = readFileSync(join(appDir, "admin/users/page.tsx"), "utf8");
     const adminAuditPage = readFileSync(join(appDir, "admin/audit/page.tsx"), "utf8");
+    const pageLoaders = readFileSync(join(libDir, "phase2-pages.ts"), "utf8");
 
-    expect(adminUsersPage).toContain("authorizeAdminPage");
-    expect(adminUsersPage).toContain('resource: "admin.users"');
     expect(adminUsersPage).toContain("await loadAdminUsersPage");
-    expect(adminAuditPage).toContain("authorizeAdminPage");
-    expect(adminAuditPage).toContain('resource: "admin.audit"');
     expect(adminAuditPage).toContain("await loadAdminAuditPage");
+    expect(pageLoaders).toContain("authorizeAdminPage");
+    expect(pageLoaders).toContain('resource: "admin.users"');
+    expect(pageLoaders).toContain('resource: "admin.audit"');
   });
 
   it("binds registration route modules to the registration mode helper", () => {
@@ -156,12 +157,12 @@ describe("Phase 2 access policy", () => {
     const bootstrapPage = readFileSync(join(appDir, "setup/admin/page.tsx"), "utf8");
     const pageLoaders = readFileSync(join(libDir, "phase2-pages.ts"), "utf8");
 
+    expect(registerPage).toContain("createPlaygroundEnv(process.env)");
     expect(registerPage).toContain("loadRegisterPage");
     expect(registerPage).toContain("notFound()");
-    expect(registerPage).toContain("resolveRegisterPageAccess");
+    expect(bootstrapPage).toContain("createPlaygroundEnv(process.env)");
     expect(bootstrapPage).toContain("loadSetupAdminPage");
     expect(bootstrapPage).toContain("notFound()");
-    expect(bootstrapPage).toContain("resolveBootstrapPageAccess");
     expect(pageLoaders).toContain("resolveRegistrationAccess");
     expect(pageLoaders).toContain("isBootstrapException: true");
   });

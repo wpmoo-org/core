@@ -44,9 +44,15 @@ importers:
       '@wpmoo/audit':
         specifier: workspace:*
         version: link:../../packages/audit
+      '@wpmoo/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
       '@wpmoo/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@wpmoo/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@wpmoo/errors':
         specifier: workspace:*
         version: link:../../packages/errors
@@ -65,12 +71,18 @@ importers:
       '@wpmoo/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      drizzle-orm:
+        specifier: 0.45.2
+        version: 0.45.2(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.21.0)
       next:
         specifier: 16.2.7
         version: 16.2.7(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       nuqs:
         specifier: 2.8.9
         version: 2.8.9(next@16.2.7(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react@19.2.7)
+      pg:
+        specifier: 8.21.0
+        version: 8.21.0
       react:
         specifier: 19.2.7
         version: 19.2.7
@@ -81,6 +93,9 @@ importers:
         specifier: 4.4.3
         version: 4.4.3
     devDependencies:
+      '@types/pg':
+        specifier: 8.20.0
+        version: 8.20.0
       '@types/react':
         specifier: 19.2.16
         version: 19.2.16

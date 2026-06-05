@@ -1,10 +1,6 @@
 import { headers } from "next/headers";
 
 import {
-  authorizeAdminPage,
-  type AdminPageAuthorizeContext
-} from "../../../lib/phase2-access";
-import {
   createStaticPageQueryClient,
   loadAdminUsersPage,
   phase2AdminUserRows,
@@ -25,16 +21,12 @@ type SearchParams = Readonly<{
 }>;
 
 type AdminUsersPageProps = Readonly<{
-  searchParams?: SearchParams | Promise<SearchParams>;
+  searchParams?: Promise<SearchParams>;
 }>;
-
-export async function authorizeAdminUsersPage(context: AdminPageAuthorizeContext) {
-  return authorizeAdminPage({ action: "read", resource: "admin.users" }, context);
-}
 
 export default async function AdminUsersPage({
   searchParams
-}: AdminUsersPageProps = {}) {
+}: AdminUsersPageProps) {
   const requestLocale = parseLocale(
     (await headers()).get("x-wpmoo-locale") ?? undefined
   );

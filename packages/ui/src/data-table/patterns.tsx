@@ -12,7 +12,8 @@ import {
   type ColumnFiltersState,
   type PaginationState,
   type RowSelectionState,
-  type SortingState
+  type SortingState,
+  type Updater
 } from "@tanstack/react-table";
 import {
   parseAsInteger,
@@ -289,6 +290,12 @@ function dataTableStateKey(state: DataTableUrlState): string {
     .join("&");
 }
 
+function resolveUpdater<T>(updater: Updater<T>, previous: T): T {
+  return typeof updater === "function"
+    ? (updater as (old: T) => T)(previous)
+    : updater;
+}
+
 export type UseDataTableOptions<TData> = Readonly<{
   columns: readonly DataTableColumnDef<TData>[];
   data: readonly TData[];
@@ -431,10 +438,88 @@ export function useDataTable<TData>({
       })),
     [data, getRowId]
   );
+  const tableData = useMemo(() => [...data], [data]);
+
+  const updateColumnFiltersFromTanStack = useCallback(
+    (updater: Updater<ColumnFiltersState>) => {
+      setState((previous) => {
+        const previousFilters = asEntryList(previous.columnFilters).map(([id, value]) => ({
+          id,
+          value
+        }));
+        const nextFilters = resolveUpdater(updater, previousFilters);
+
+        return {
+          ...previous,
+          columnFilters: nextFilters.reduce((acc, filter) => {
+            const values = Array.isArray(filter.value)
+              ? filter.value.map((value) => String(value))
+              : [];
+
+            if (values.length > 0) {
+              acc[filter.id] = values;
+            }
+
+            return acc;
+          }, {} as DataTableColumnFilterState),
+          pageIndex: 0
+        };
+      });
+    },
+    []
+  );
+
+  const updatePaginationFromTanStack = useCallback(
+    (updater: Updater<PaginationState>) => {
+      setState((previous) => {
+        const nextPagination = resolveUpdater(updater, {
+          pageIndex: previous.pageIndex,
+          pageSize: previous.pageSize
+        });
+
+        return {
+          ...previous,
+          pageIndex: Math.max(nextPagination.pageIndex, 0),
+          pageSize: clampPageSize(nextPagination.pageSize)
+        };
+      });
+    },
+    []
+  );
+
+  const updateSortingFromTanStack = useCallback((updater: Updater<SortingState>) => {
+    setState((previous) => {
+      const nextSorting = resolveUpdater(
+        updater,
+        previous.sorting.map((sort) => ({
+          id: sort.id,
+          desc: sort.desc
+        }))
+      );
+
+      return {
+        ...previous,
+        pageIndex: 0,
+        sorting: nextSorting.map((sort) => ({
+          id: sort.id,
+          desc: sort.desc
+        }))
+      };
+    });
+  }, []);
+
+  const updateRowSelectionFromTanStack = useCallback(
+    (updater: Updater<RowSelectionState>) => {
+      setRowSelection((previous) => ({
+        ...resolveUpdater(updater, previous)
+      }));
+    },
+    []
+  );
 
   const tanstackTable = useReactTable({
     columns: tanstackColumns,
-    data: [...data],
+    data: tableData,
     enableRowSelection: true,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -450,6 +535,25 @@ export function useDataTable<TData>({
 
       return toTextValue(row.getValue(columnId)).toLowerCase().includes(query);
     },
+    onColumnFiltersChange: updateColumnFiltersFromTanStack,
+    onColumnVisibilityChange: (updater) => {
+      setState((previous) => ({
+        ...previous,
+        visibility: {
+          ...resolveUpdater(updater, previous.visibility)
+        }
+      }));
+    },
+    onGlobalFilterChange: (updater) => {
+      setState((previous) => ({
+        ...previous,
+        globalFilter: resolveUpdater(updater, previous.globalFilter),
+        pageIndex: 0
+      }));
+    },
+    onPaginationChange: updatePaginationFromTanStack,
+    onRowSelectionChange: updateRowSelectionFromTanStack,
+    onSortingChange: updateSortingFromTanStack,
     state: {
       columnFilters: tanstackColumnFilters,
       columnVisibility: state.visibility,
@@ -460,27 +564,19 @@ export function useDataTable<TData>({
     }
   });
 
-  const filteredRows = useMemo(
-    () =>
-      tanstackTable.getFilteredRowModel().rows.map((row) => ({
-        id: row.id,
-        index: row.index,
-        original: row.original
-      })),
-    [tanstackTable]
-  );
+  const filteredRows = tanstackTable.getFilteredRowModel().rows.map((row) => ({
+    id: row.id,
+    index: row.index,
+    original: row.original
+  }));
 
   const pageCount = Math.max(tanstackTable.getPageCount(), 1);
 
-  const pageRows = useMemo(
-    () =>
-      tanstackTable.getRowModel().rows.map((row) => ({
-        id: row.id,
-        index: row.index,
-        original: row.original
-      })),
-    [tanstackTable]
-  );
+  const pageRows = tanstackTable.getRowModel().rows.map((row) => ({
+    id: row.id,
+    index: row.index,
+    original: row.original
+  }));
 
   useEffect(() => {
     const clamped = clampPageIndex(state.pageIndex, pageCount);
@@ -874,13 +970,19 @@ export function DataTableToolbar<TData>({
   children
 }: DataTableToolbarProps<TData>) {
   const globalFilter = table.getState().globalFilter;
+  const handleGlobalFilterInput = (value: string) => {
+    table.setGlobalFilter(value);
+  };
 
   return (
     <div className="wpmoo-data-table-toolbar flex items-center gap-2">
       <input
         aria-label="Search table"
         onChange={(change) => {
-          table.setGlobalFilter(change.target.value);
+          handleGlobalFilterInput(change.target.value);
+        }}
+        onInput={(input) => {
+          handleGlobalFilterInput(input.currentTarget.value);
         }}
         placeholder={searchPlaceholder ?? "Search..."}
         type="search"

@@ -7,6 +7,7 @@
   "packageManager": "pnpm@10.34.1",
   "scripts": {
     "build": "turbo run build",
+    "dev": "pnpm --filter @wpmoo/playground dev",
     "domain:check": "node scripts/check-domain-neutrality.mjs",
     "i18n:check": "pnpm --filter @wpmoo/i18n routes:check",
     "i18n:routes": "pnpm --filter @wpmoo/i18n routes:sync",

@@ -90,35 +90,34 @@ export function AdminUserRoles({
   return (
     <>
       <AdminActionFeedback locale={locale} state={initialState} />
-      <DataTable table={table}>
-        <DataTableToolbar table={table} searchPlaceholder="Search users">
-          <DataTableFacetedFilter
-            column={table.getColumn("role")}
-            options={columns[2]?.filterOptions ?? []}
-            title="Role"
-          />
-        </DataTableToolbar>
-        <DataTablePagination table={table} />
-        <DataTableActionBar table={table}>
-          <form className="admin-bulk-action-form">
-            {selectedRows.map((row) => (
-              <input
-                key={row.id}
-                name="targetUserId"
-                type="hidden"
-                value={row.original.email}
-              />
-            ))}
-            <label>
-              <input name="confirmed" type="checkbox" value="yes" />
-              Confirm role change
-            </label>
-            <button type="submit" disabled>
-              Assign admin to selected
-            </button>
-          </form>
-        </DataTableActionBar>
-      </DataTable>
+      <DataTableToolbar table={table} searchPlaceholder="Search users">
+        <DataTableFacetedFilter
+          column={table.getColumn("role")}
+          options={columns[2]?.filterOptions ?? []}
+          title="Role"
+        />
+      </DataTableToolbar>
+      <DataTable table={table} />
+      <DataTablePagination table={table} />
+      <DataTableActionBar table={table}>
+        <form className="admin-bulk-action-form">
+          {selectedRows.map((row) => (
+            <input
+              key={row.id}
+              name="targetUserId"
+              type="hidden"
+              value={row.original.email}
+            />
+          ))}
+          <label>
+            <input name="confirmed" type="checkbox" value="yes" />
+            Confirm role change
+          </label>
+          <button type="submit" disabled>
+            Assign admin to selected
+          </button>
+        </form>
+      </DataTableActionBar>
     </>
   );
 }

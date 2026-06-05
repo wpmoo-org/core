@@ -61,4 +61,44 @@ describe("data table foundation", () => {
     expect(patternsSource).toContain("dataTableStateKey(previous) === dataTableStateKey(next)");
     expect(patternsSource).toContain("selectedIds.every((rowId) => validIds.has(rowId))");
   });
+
+  it("keeps TanStack Table as the canonical row-model engine", () => {
+    const patternsSource = readFileSync(
+      resolve(packageRoot, "src/data-table/patterns.tsx"),
+      "utf8"
+    );
+
+    expect(patternsSource).toContain("const tanstackTable = useReactTable");
+    expect(patternsSource).toContain("onColumnFiltersChange: updateColumnFiltersFromTanStack");
+    expect(patternsSource).toContain("onGlobalFilterChange");
+    expect(patternsSource).toContain("onPaginationChange: updatePaginationFromTanStack");
+    expect(patternsSource).toContain("onSortingChange: updateSortingFromTanStack");
+    expect(patternsSource).toContain("tanstackTable.getFilteredRowModel().rows.map");
+    expect(patternsSource).toContain("tanstackTable.getRowModel().rows.map");
+  });
+
+  it("does not memoize TanStack row models on the stable table instance", () => {
+    const patternsSource = readFileSync(
+      resolve(packageRoot, "src/data-table/patterns.tsx"),
+      "utf8"
+    );
+
+    expect(patternsSource).not.toContain(
+      "const filteredRows = useMemo(\n    () =>\n      tanstackTable.getFilteredRowModel()"
+    );
+    expect(patternsSource).not.toContain(
+      "const pageRows = useMemo(\n    () =>\n      tanstackTable.getRowModel()"
+    );
+  });
+
+  it("passes stable data references into TanStack Table", () => {
+    const patternsSource = readFileSync(
+      resolve(packageRoot, "src/data-table/patterns.tsx"),
+      "utf8"
+    );
+
+    expect(patternsSource).toContain("const tableData = useMemo(() => [...data], [data]);");
+    expect(patternsSource).toContain("data: tableData");
+    expect(patternsSource).not.toContain("data: [...data]");
+  });
 });

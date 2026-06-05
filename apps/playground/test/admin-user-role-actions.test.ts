@@ -28,11 +28,7 @@ const initialState: SearchFeedback = {
 
 const actor = {
   emailVerified: true,
-  permissions: new Set([
-    "admin.users:assign",
-    "admin.users:bulk_assign",
-    "admin.users:revoke"
-  ]),
+  permissions: new Set(["admin.users:update"]),
   sessionId: "admin-session",
   userId: "admin@playground"
 };
@@ -226,7 +222,7 @@ describe("admin user role action state", () => {
       changed: true
     });
     expect(actions.authorize).toHaveBeenCalledWith({
-      action: "assign",
+      action: "update",
       input: expect.objectContaining({
         targetUserId: "new-admin-target@test"
       }),
@@ -309,7 +305,7 @@ describe("admin user role action state", () => {
     });
     expect(actions.authorize).toHaveBeenCalledTimes(1);
     expect(actions.authorize).toHaveBeenCalledWith({
-      action: "bulk_assign",
+      action: "update",
       input: expect.objectContaining({
         targetUserIds: [
           "bulk-admin@example.test",

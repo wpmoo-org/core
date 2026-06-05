@@ -1,11 +1,29 @@
+import { corePermissionCatalog } from "@wpmoo/rbac/catalog";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import {
   action,
   actionState,
+  actionRegistry,
   routeAction,
   safeRedirectTarget
 } from "../lib/action.js";
+
+describe("action registry", () => {
+  it("keeps admin policies mapped to seeded catalog permissions", () => {
+    const seededPermissions = new Set(
+      corePermissionCatalog.map((permission) => permission.id)
+    );
+
+    for (const [id, policy] of Object.entries(actionRegistry)) {
+      if (!id.startsWith("admin.")) {
+        continue;
+      }
+
+      expect(seededPermissions).toContain(`${policy.resource}:${policy.action}`);
+    }
+  });
+});
 
 describe("action", () => {
   it("validates input before authorize and handler run", async () => {

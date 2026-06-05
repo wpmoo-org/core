@@ -36,21 +36,21 @@ export const actionRegistry = {
     risk: "critical"
   },
   "admin.users.role.assign": {
-    action: "assign",
+    action: "update",
     audit: true,
     requireCsrf: true,
     resource: "admin.users",
     risk: "high"
   },
   "admin.users.role.revoke": {
-    action: "revoke",
+    action: "update",
     audit: true,
     requireCsrf: true,
     resource: "admin.users",
     risk: "high"
   },
   "admin.users.role.bulk_assign": {
-    action: "bulk_assign",
+    action: "update",
     audit: true,
     requireCsrf: true,
     resource: "admin.users",

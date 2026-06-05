@@ -70,7 +70,7 @@ packages/
   db/          Drizzle schema, migrations, high-level DB helpers
   email/       Email provider interface (appears when exercised by a slice)
   errors/      Canonical error code registry for server actions and UI messages
-  i18n/        Route infrastructure and future next-intl runtime integration
+  i18n/        Route infrastructure; next-intl runtime messages are deferred
   jobs/        Job provider package (future adapter phase)
   logging/     Logging facade and future structured production sink
   payment/     Payment provider package (future adapter phase)
@@ -80,6 +80,7 @@ packages/
   security/    Security headers, secret encryption helpers, CSRF/cookie/webhook utilities
   storage/     Storage provider package (future adapter phase)
   ui/          Shared UI primitives and data-table patterns
+               Current playground/admin visuals use plain CSS while Tailwind v4 remains the target layer.
 
 apps/
   playground/  The Next.js application (composition root)

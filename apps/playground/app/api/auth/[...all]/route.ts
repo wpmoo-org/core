@@ -1,7 +1,7 @@
 async function handleAuth(request: Request) {
-  const { auth } = await import("../../../../lib/auth");
+  const { createPlaygroundAuth } = await import("../../../../lib/auth");
 
-  return auth.handler(request);
+  return createPlaygroundAuth().handler(request);
 }
 
 export const GET = handleAuth;

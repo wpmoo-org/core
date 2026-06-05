@@ -59,6 +59,9 @@ importers:
       '@wpmoo/rbac':
         specifier: workspace:*
         version: link:../../packages/rbac
+      '@wpmoo/security':
+        specifier: workspace:*
+        version: link:../../packages/security
       '@wpmoo/ui':
         specifier: workspace:*
         version: link:../../packages/ui

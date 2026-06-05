@@ -18,6 +18,7 @@
     "@wpmoo/i18n": "workspace:*",
     "@wpmoo/rate-limit": "workspace:*",
     "@wpmoo/rbac": "workspace:*",
+    "@wpmoo/security": "workspace:*",
     "@wpmoo/ui": "workspace:*",
     "next": "16.2.7",
     "nuqs": "2.8.9",

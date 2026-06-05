@@ -1,3 +1,8 @@
+import {
+  authorizeAdminPage,
+  type AdminPageAuthorizeContext
+} from "../../../lib/phase2-access";
+
 export const dynamic = "force-dynamic";
 
 const users = [
@@ -12,6 +17,10 @@ const users = [
     role: "user"
   }
 ];
+
+export async function authorizeAdminUsersPage(context: AdminPageAuthorizeContext) {
+  return authorizeAdminPage({ action: "read", resource: "admin.users" }, context);
+}
 
 export default function AdminUsersPage() {
   return (

@@ -34,6 +34,20 @@ export const actionRegistry = {
     requireCsrf: true,
     resource: "bootstrap",
     risk: "critical"
+  },
+  "admin.users.role.assign": {
+    action: "assign",
+    audit: true,
+    requireCsrf: true,
+    resource: "admin.users",
+    risk: "high"
+  },
+  "admin.users.role.revoke": {
+    action: "revoke",
+    audit: true,
+    requireCsrf: true,
+    resource: "admin.users",
+    risk: "high"
   }
 } as const;
 

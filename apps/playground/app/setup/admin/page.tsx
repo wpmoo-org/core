@@ -1,4 +1,16 @@
+import {
+  resolveRegistrationAccess,
+  type RegistrationMode
+} from "../../../lib/phase2-access";
+
 export const dynamic = "force-dynamic";
+
+export function resolveBootstrapPageAccess(mode: RegistrationMode) {
+  return resolveRegistrationAccess({
+    isBootstrapException: true,
+    mode
+  });
+}
 
 export default function SetupAdminPage() {
   return (

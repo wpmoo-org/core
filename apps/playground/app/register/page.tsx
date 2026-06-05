@@ -1,4 +1,13 @@
+import {
+  resolveRegistrationAccess,
+  type RegistrationMode
+} from "../../lib/phase2-access";
+
 export const dynamic = "force-dynamic";
+
+export function resolveRegisterPageAccess(mode: RegistrationMode) {
+  return resolveRegistrationAccess({ mode });
+}
 
 export default function RegisterPage() {
   return (

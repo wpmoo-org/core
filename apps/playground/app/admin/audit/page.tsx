@@ -1,3 +1,8 @@
+import {
+  authorizeAdminPage,
+  type AdminPageAuthorizeContext
+} from "../../../lib/phase2-access";
+
 export const dynamic = "force-dynamic";
 
 const auditRows = [
@@ -12,6 +17,10 @@ const auditRows = [
     target: "user:core"
   }
 ];
+
+export async function authorizeAdminAuditPage(context: AdminPageAuthorizeContext) {
+  return authorizeAdminPage({ action: "read", resource: "admin.audit" }, context);
+}
 
 export default function AdminAuditPage() {
   return (

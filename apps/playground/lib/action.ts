@@ -7,6 +7,20 @@ import {
 import { z } from "zod";
 
 export const actionRegistry = {
+  "auth.login": {
+    action: "login",
+    audit: false,
+    requireCsrf: false,
+    resource: "auth",
+    risk: "medium"
+  },
+  "auth.register": {
+    action: "register",
+    audit: false,
+    requireCsrf: false,
+    resource: "auth",
+    risk: "medium"
+  },
   "proof.noop": {
     action: "execute",
     audit: false,

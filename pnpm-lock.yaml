@@ -41,6 +41,9 @@ importers:
       '@t3-oss/env-nextjs':
         specifier: 0.13.11
         version: 0.13.11(typescript@5.9.3)(zod@4.4.3)
+      '@wpmoo/audit':
+        specifier: workspace:*
+        version: link:../../packages/audit
       '@wpmoo/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -50,6 +53,12 @@ importers:
       '@wpmoo/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
+      '@wpmoo/rate-limit':
+        specifier: workspace:*
+        version: link:../../packages/rate-limit
+      '@wpmoo/rbac':
+        specifier: workspace:*
+        version: link:../../packages/rbac
       '@wpmoo/ui':
         specifier: workspace:*
         version: link:../../packages/ui

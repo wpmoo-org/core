@@ -32,25 +32,23 @@ describe("@wpmoo/security", () => {
     expect(verifyTokenHash("wrong token", tokenHash)).toBe(false);
   });
 
-  it("defines an encryption envelope skeleton without pretending to encrypt yet", () => {
+  it("encrypts and decrypts secrets with a key-versioned envelope", () => {
     const helper = createEncryptionHelper({
+      appEncryptionKey: Buffer.alloc(32, 7).toString("base64url"),
       environment: "development",
       keyVersion: "local-dev"
     });
+    const envelope = helper.encryptSecret("secret");
 
     expect(helper.algorithm).toBe(ENCRYPTION_ALGORITHM);
     expect(helper.keyVersion).toBe("local-dev");
-    expect(() => helper.encryptSecret("secret")).toThrow(EncryptionUnavailableError);
-    expect(() =>
-      helper.decryptSecret({
-        algorithm: ENCRYPTION_ALGORITHM,
-        ciphertext: "ciphertext",
-        keyVersion: "local-dev",
-        nonce: "nonce",
-        tag: "tag",
-        version: 1
-      })
-    ).toThrow(EncryptionUnavailableError);
+    expect(envelope).toMatchObject({
+      algorithm: ENCRYPTION_ALGORITHM,
+      keyVersion: "local-dev",
+      version: 1
+    });
+    expect(envelope.ciphertext).not.toBe("secret");
+    expect(helper.decryptSecret(envelope)).toBe("secret");
   });
 
   it("requires APP_ENCRYPTION_KEY before production encryption helper use", () => {
@@ -60,6 +58,32 @@ describe("@wpmoo/security", () => {
         keyVersion: "v1"
       })
     ).toThrow(EncryptionUnavailableError);
+  });
+
+  it("requires a 32-byte encryption key before encrypting in any environment", () => {
+    expect(() =>
+      createEncryptionHelper({
+        appEncryptionKey: Buffer.alloc(16, 7).toString("base64url"),
+        environment: "development",
+        keyVersion: "v1"
+      })
+    ).toThrow("APP_ENCRYPTION_KEY must decode to 32 bytes");
+  });
+
+  it("rejects unsupported encrypted secret envelope versions", () => {
+    const helper = createEncryptionHelper({
+      appEncryptionKey: Buffer.alloc(32, 7).toString("base64url"),
+      environment: "development",
+      keyVersion: "v1"
+    });
+    const envelope = helper.encryptSecret("secret");
+
+    expect(() =>
+      helper.decryptSecret({
+        ...envelope,
+        version: 2
+      })
+    ).toThrow("Unsupported encrypted secret version");
   });
 
   it("creates strict baseline production security headers", () => {

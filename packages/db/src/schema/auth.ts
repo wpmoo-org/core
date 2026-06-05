@@ -1,24 +1,32 @@
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
   boolean,
   index,
   integer,
   pgTable,
   text,
-  timestamp
+  timestamp,
+  uniqueIndex
 } from "drizzle-orm/pg-core";
 
 const instant = (name: string) => timestamp(name, { withTimezone: true });
 
-export const user = pgTable("user", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  email: text("email").notNull().unique(),
-  emailVerified: boolean("email_verified").default(false).notNull(),
-  image: text("image"),
-  createdAt: instant("created_at").defaultNow().notNull(),
-  updatedAt: instant("updated_at").defaultNow().notNull()
-});
+export const user = pgTable(
+  "user",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    email: text("email").notNull().unique(),
+    emailVerified: boolean("email_verified").default(false).notNull(),
+    image: text("image"),
+    createdAt: instant("created_at").defaultNow().notNull(),
+    updatedAt: instant("updated_at").defaultNow().notNull()
+  },
+  (table) => [
+    index("user_email_lower_idx").on(sql`lower(${table.email})`),
+    index("user_created_at_idx").on(table.createdAt.desc())
+  ]
+);
 
 export const session = pgTable(
   "session",
@@ -34,7 +42,10 @@ export const session = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" })
   },
-  (table) => [index("session_user_id_idx").on(table.userId)]
+  (table) => [
+    index("session_user_id_idx").on(table.userId),
+    index("session_expires_at_idx").on(table.expiresAt)
+  ]
 );
 
 export const account = pgTable(
@@ -47,8 +58,11 @@ export const account = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     accessToken: text("access_token"),
+    accessTokenKeyVersion: text("access_token_key_version"),
     refreshToken: text("refresh_token"),
+    refreshTokenKeyVersion: text("refresh_token_key_version"),
     idToken: text("id_token"),
+    idTokenKeyVersion: text("id_token_key_version"),
     accessTokenExpiresAt: instant("access_token_expires_at"),
     refreshTokenExpiresAt: instant("refresh_token_expires_at"),
     scope: text("scope"),
@@ -56,7 +70,13 @@ export const account = pgTable(
     createdAt: instant("created_at").defaultNow().notNull(),
     updatedAt: instant("updated_at").defaultNow().notNull()
   },
-  (table) => [index("account_user_id_idx").on(table.userId)]
+  (table) => [
+    index("account_user_id_idx").on(table.userId),
+    uniqueIndex("account_provider_account_unique").on(
+      table.providerId,
+      table.accountId
+    )
+  ]
 );
 
 export const verification = pgTable(
@@ -69,7 +89,10 @@ export const verification = pgTable(
     createdAt: instant("created_at").defaultNow().notNull(),
     updatedAt: instant("updated_at").defaultNow().notNull()
   },
-  (table) => [index("verification_identifier_idx").on(table.identifier)]
+  (table) => [
+    index("verification_identifier_idx").on(table.identifier),
+    index("verification_expires_at_idx").on(table.expiresAt)
+  ]
 );
 
 export const twoFactor = pgTable(
@@ -77,6 +100,7 @@ export const twoFactor = pgTable(
   {
     id: text("id").primaryKey(),
     secret: text("secret").notNull(),
+    secretKeyVersion: text("secret_key_version"),
     backupCodes: text("backup_codes").notNull(),
     userId: text("user_id")
       .notNull()

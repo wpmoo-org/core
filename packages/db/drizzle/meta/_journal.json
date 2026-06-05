@@ -15,6 +15,13 @@
       "when": 1780619997227,
       "tag": "0001_phase_2_security_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1780629196461,
+      "tag": "0002_phase_3_key_versions_indexes",
+      "breakpoints": true
     }
   ]
 }

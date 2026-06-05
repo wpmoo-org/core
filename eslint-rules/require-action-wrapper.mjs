@@ -9,7 +9,7 @@ export default {
     },
     messages: {
       rawServerAction:
-        "Mutating server actions must be exported through action().",
+        "Mutating server actions must be exported through action() or actionState().",
       rawRouteHandler:
         "Mutating route handlers must be exported through routeAction()."
     },
@@ -23,6 +23,7 @@ export default {
           hasUseServerDirective(program) ||
           /(?:^|\/)app\/.*\/actions?\.[cm]?[jt]sx?$/.test(filename);
         const isRouteHandler = /(?:^|\/)route\.[cm]?[jt]sx?$/.test(filename);
+        const isBetterAuthRouteHandler = /(?:^|\/)app\/api\/auth\/\[\.\.\.all\]\/route\.[cm]?[jt]sx?$/.test(filename);
 
         if (!isServerActionFile && !isRouteHandler) {
           return;
@@ -52,6 +53,10 @@ export default {
               if (isRouteHandler) {
                 const routeMethod = getDeclaratorName(declarator);
 
+                if (isBetterAuthRouteHandler && isAuthHandlerExport(declarator)) {
+                  continue;
+                }
+
                 if (!isMutatingRouteMethod(routeMethod)) {
                   continue;
                 }
@@ -66,7 +71,10 @@ export default {
                 continue;
               }
 
-              if (!isCallTo(declarator.init, "action")) {
+              if (
+                !isCallTo(declarator.init, "action") &&
+                !isCallTo(declarator.init, "actionState")
+              ) {
                 context.report({
                   node: declarator,
                   messageId: "rawServerAction"
@@ -100,4 +108,18 @@ function isCallTo(node, name) {
   }
 
   return node.callee.type === "Identifier" && node.callee.name === name;
+}
+
+function isAuthHandlerExport(declarator) {
+  const routeMethod = getDeclaratorName(declarator);
+
+  if (!isMutatingRouteMethod(routeMethod)) {
+    return false;
+  }
+
+  if (declarator.init?.type !== "Identifier") {
+    return false;
+  }
+
+  return declarator.init.name === "handleAuth";
 }

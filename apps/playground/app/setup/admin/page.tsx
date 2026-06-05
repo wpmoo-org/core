@@ -1,16 +1,13 @@
 import { notFound } from "next/navigation";
-import type { RegistrationMode } from "../../../lib/phase2-access";
-import { loadSetupAdminPage, readRegistrationMode } from "../../../lib/phase2-pages";
+import { createPlaygroundEnv } from "../../../config/env";
+import { loadSetupAdminPage } from "../../../lib/phase2-pages";
 
 export const dynamic = "force-dynamic";
 
-export function resolveBootstrapPageAccess(mode: RegistrationMode) {
-  return loadSetupAdminPage({ mode }).access;
-}
-
 export default function SetupAdminPage() {
+  const env = createPlaygroundEnv(process.env);
   const page = loadSetupAdminPage({
-    mode: readRegistrationMode(process.env.REGISTRATION_MODE)
+    mode: env.REGISTRATION_MODE
   });
 
   if (!page.access.allowed) {

@@ -3,9 +3,11 @@
 Domain-free, single-tenant SaaS operating foundation for Next.js apps
 (shadcn-compatible admin, Better Auth, RBAC/IAM, audit, provider seams).
 
-> **Status:** Phase 1 proof scaffold. The Better Auth proof pack pins the auth
-> package line, wires the initial auth factory, records schema diffs, and blocks
-> migration generation until proof approval.
+> **Status:** Phase 4.6 real-slice reconciliation is in progress. Phase 0-4.5
+> produced the proof foundation, security helpers, RBAC/audit seams, admin UI
+> patterns, and shadcn-compatible visual alignment. Phase 4.6 reconciles that
+> proof work into route-bound product behavior and adds permanent architecture
+> contract gates before Phase 5 RBAC/IAM depth.
 
 ## Docs
 

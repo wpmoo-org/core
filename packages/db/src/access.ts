@@ -1,4 +1,13 @@
-import type { EffectiveAccess, LifecycleStatus } from "@wpmoo/rbac";
+export type LifecycleStatus = "active" | "suspended" | "banned";
+
+export type EffectiveAccess = Readonly<{
+  lifecycle: Readonly<{
+    expiresAt?: Date | null;
+    status: LifecycleStatus;
+  }>;
+  permissions: ReadonlySet<string>;
+  userId: string;
+}>;
 
 export type DbQueryResult<Row extends Record<string, unknown>> = Readonly<{
   rowCount: number | null;

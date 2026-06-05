@@ -54,6 +54,26 @@ describe("require-action-wrapper eslint rule", () => {
     expect(messages).toEqual([]);
   });
 
+  it("allows exported server action state adapters created through actionState()", () => {
+    const messages = linter.verify(
+      `
+      "use server";
+      import { actionState } from "../lib/action.js";
+      export const saveThing = actionState("proof.noop", {
+        authorize: async () => ({}),
+        handler: async () => ({}),
+        onFailure: () => ({}),
+        parse: () => ({}),
+        schema: proofSchema
+      });
+      `,
+      config,
+      { filename: "apps/playground/app/admin/actions.ts" }
+    );
+
+    expect(messages).toEqual([]);
+  });
+
   it("flags raw server action exports that bypass action()", () => {
     const messages = linter.verify(
       `
@@ -96,6 +116,23 @@ describe("require-action-wrapper eslint rule", () => {
 
     expect(messages).toHaveLength(1);
     expect(messages[0]?.message).toContain("routeAction()");
+  });
+
+  it("allows the Better Auth provider route to export the provider handler", () => {
+    const messages = linter.verify(
+      `
+      async function handleAuth(request) {
+        const { createPlaygroundAuth } = await import("../../../../lib/auth");
+        return createPlaygroundAuth().handler(request);
+      }
+      export const GET = handleAuth;
+      export const POST = handleAuth;
+      `,
+      config,
+      { filename: "apps/playground/app/api/auth/[...all]/route.ts" }
+    );
+
+    expect(messages).toEqual([]);
   });
 
   it("flags route handlers exported through the server action wrapper", () => {

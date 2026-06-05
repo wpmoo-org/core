@@ -1,50 +1,49 @@
+import { headers } from "next/headers";
+
+import { createAdminPageContext } from "../../../lib/admin-context";
+import { createPlaygroundQueryClient } from "../../../lib/db";
+import { loadAdminUsersPage } from "../../../lib/phase2-pages";
+import { AdminUserRoles } from "../../../components/admin/admin-user-roles";
 import {
-  authorizeAdminPage,
-  type AdminPageAuthorizeContext
-} from "../../../lib/phase2-access";
-import {
-  createStaticPageQueryClient,
-  loadAdminUsersPage,
-  phase2AdminUserRows,
-  phase2StaticAdminContext
-} from "../../../lib/phase2-pages";
+  parseActionFeedbackFromSearchParams,
+  parseLocale
+} from "../../../lib/action-feedback";
 
 export const dynamic = "force-dynamic";
 
-export async function authorizeAdminUsersPage(context: AdminPageAuthorizeContext) {
-  return authorizeAdminPage({ action: "read", resource: "admin.users" }, context);
-}
+type SearchParams = Readonly<{
+  action?: string | string[];
+  code?: string | string[];
+  result?: string | string[];
+}>;
 
-export default async function AdminUsersPage() {
+type AdminUsersPageProps = Readonly<{
+  searchParams?: Promise<SearchParams>;
+}>;
+
+export default async function AdminUsersPage({
+  searchParams
+}: AdminUsersPageProps) {
+  const requestLocale = parseLocale(
+    (await headers()).get("x-wpmoo-locale") ?? undefined
+  );
+  const resolvedSearchParams = await Promise.resolve(searchParams);
+  const initialState = parseActionFeedbackFromSearchParams(resolvedSearchParams);
+
   const page = await loadAdminUsersPage(
-    phase2StaticAdminContext,
-    createStaticPageQueryClient(phase2AdminUserRows)
+    await createAdminPageContext(),
+    createPlaygroundQueryClient()
   );
 
   return (
-    <main className="shell">
-      <section className="proof-panel wide">
-        <p className="eyebrow">Admin</p>
-        <h1>Users</h1>
-        <table className="data-grid">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Role</th>
-            </tr>
-          </thead>
-          <tbody>
-            {page.users.map((user) => (
-              <tr key={user.email}>
-                <td>{user.name}</td>
-                <td>{user.email}</td>
-                <td>{user.role}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
-    </main>
+    <section className="admin-panel">
+      <p className="eyebrow">Admin</p>
+      <h1>Users</h1>
+      <AdminUserRoles
+        initialState={initialState}
+        locale={requestLocale}
+        users={page.users}
+      />
+    </section>
   );
 }

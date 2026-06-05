@@ -67,14 +67,6 @@ export function loadRegisterPage(input: RegistrationPageInput) {
   };
 }
 
-export function readRegistrationMode(value: string | undefined): RegistrationMode {
-  if (value === "disabled" || value === "invite_only" || value === "public") {
-    return value;
-  }
-
-  return "public";
-}
-
 export function loadSetupAdminPage(input: RegistrationPageInput) {
   return {
     access: resolveRegistrationAccess({

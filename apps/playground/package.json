@@ -12,19 +12,26 @@
   },
   "dependencies": {
     "@t3-oss/env-nextjs": "0.13.11",
+    "@wpmoo/auth": "workspace:*",
     "@wpmoo/audit": "workspace:*",
     "@wpmoo/config": "workspace:*",
+    "@wpmoo/db": "workspace:*",
     "@wpmoo/errors": "workspace:*",
     "@wpmoo/i18n": "workspace:*",
     "@wpmoo/rate-limit": "workspace:*",
     "@wpmoo/rbac": "workspace:*",
+    "@wpmoo/security": "workspace:*",
     "@wpmoo/ui": "workspace:*",
+    "drizzle-orm": "0.45.2",
     "next": "16.2.7",
+    "nuqs": "2.8.9",
+    "pg": "8.21.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@types/pg": "8.20.0",
     "@types/react": "19.2.16",
     "@types/react-dom": "19.2.3"
   }

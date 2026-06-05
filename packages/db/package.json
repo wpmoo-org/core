@@ -6,6 +6,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./access": "./dist/access.js",
     "./schema/auth": "./src/schema/auth.ts",
     "./schema/core": "./src/schema/core.ts"
   },
@@ -20,7 +21,6 @@
     "test": "vitest run --root ../.. packages/db/test"
   },
   "dependencies": {
-    "@wpmoo/rbac": "workspace:*",
     "drizzle-orm": "0.45.2",
     "pg": "8.21.0"
   },

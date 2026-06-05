@@ -1,15 +1,15 @@
+import { createAdminPageContext } from "../../../lib/admin-context";
 import {
   createStaticPageQueryClient,
   loadAdminAuditPage,
-  phase2AuditRows,
-  phase2StaticAdminContext
+  phase2AuditRows
 } from "../../../lib/phase2-pages";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminAuditPage() {
   const page = await loadAdminAuditPage(
-    phase2StaticAdminContext,
+    await createAdminPageContext(),
     createStaticPageQueryClient(phase2AuditRows)
   );
 

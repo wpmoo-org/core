@@ -9,12 +9,64 @@ export type CreateAuthOptions = {
   useSecureCookies: boolean;
 };
 
+export type CoreSession = Readonly<{
+  emailVerified?: boolean;
+  sessionId: string;
+  userId: string;
+}>;
+
 export type CoreAuth = Readonly<{
+  getSession: (headers: Headers) => Promise<CoreSession | null>;
+  handler: (request: Request) => Promise<Response>;
+}>;
+
+type BetterAuthSessionResponse = Readonly<{
+  session?: Readonly<{
+    id?: string;
+  }> | null;
+  user?: Readonly<{
+    emailVerified?: boolean;
+    id?: string;
+  }> | null;
+}>;
+
+type BetterAuthRuntime = Readonly<{
+  api?: {
+    getSession?: (context: {
+      asResponse?: false;
+      headers: Headers;
+    }) => Promise<BetterAuthSessionResponse | null>;
+  };
   handler: (request: Request) => Promise<Response>;
 }>;
 
 export function createAuth(options: CreateAuthOptions): CoreAuth {
-  return betterAuth(createAuthConfig(options));
+  const auth = betterAuth(createAuthConfig(options)) as unknown as BetterAuthRuntime;
+
+  return {
+    async getSession(headers) {
+      const session = await auth.api?.getSession?.({
+        asResponse: false,
+        headers
+      });
+      const authSession = session?.session;
+      const user = session?.user;
+      const sessionId = authSession?.id;
+      const userId = user?.id;
+      const emailVerified = user?.emailVerified;
+
+      if (typeof sessionId !== "string" || typeof userId !== "string") {
+        return null;
+      }
+
+      return {
+        emailVerified,
+        sessionId,
+        userId
+      };
+    },
+    handler: auth.handler
+  };
 }
 
 export function createAuthConfig(options: CreateAuthOptions): BetterAuthOptions {

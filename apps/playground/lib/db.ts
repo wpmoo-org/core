@@ -36,12 +36,15 @@ export function createPlaygroundQueryClient() {
   const pool = getPool();
 
   return {
-    async query(sql: string, parameters?: readonly unknown[]) {
+    async query<Row extends Record<string, unknown>>(
+      sql: string,
+      parameters?: readonly unknown[]
+    ) {
       const result = await pool.query(sql, parameters as unknown[] | undefined);
 
       return {
         rowCount: result.rowCount,
-        rows: result.rows as readonly Record<string, unknown>[]
+        rows: result.rows as readonly Row[]
       };
     }
   };

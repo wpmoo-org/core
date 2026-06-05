@@ -18,5 +18,3 @@ export function createPlaygroundAuth() {
     useSecureCookies: env.NODE_ENV === "production"
   });
 }
-
-export const auth = createPlaygroundAuth();

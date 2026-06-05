@@ -1,10 +1,10 @@
 import { headers } from "next/headers";
 
+import { createAdminPageContext } from "../../../lib/admin-context";
 import {
   createStaticPageQueryClient,
   loadAdminUsersPage,
-  phase2AdminUserRows,
-  phase2StaticAdminContext
+  phase2AdminUserRows
 } from "../../../lib/phase2-pages";
 import { AdminUserRoles } from "../../../components/admin/admin-user-roles";
 import {
@@ -34,7 +34,7 @@ export default async function AdminUsersPage({
   const initialState = parseActionFeedbackFromSearchParams(resolvedSearchParams);
 
   const page = await loadAdminUsersPage(
-    phase2StaticAdminContext,
+    await createAdminPageContext(),
     createStaticPageQueryClient(phase2AdminUserRows)
   );
 

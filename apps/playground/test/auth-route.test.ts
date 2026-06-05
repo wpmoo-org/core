@@ -10,7 +10,7 @@ describe("Better Auth app route", () => {
     );
 
     expect(routeSource).toContain("await import");
-    expect(routeSource).toContain("auth.handler(request)");
+    expect(routeSource).toContain("createPlaygroundAuth().handler(request)");
     expect(routeSource).toContain("export const GET");
     expect(routeSource).toContain("export const POST");
     expect(routeSource).not.toContain("betterAuth(");

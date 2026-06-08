@@ -185,11 +185,12 @@ function createRoleActions() {
 }
 
 describe("admin user role action state", () => {
-  it("does not expose fixture-backed role mutations as route-bound server actions", () => {
+  it("binds real admin role server actions without exposing csrf cookies through forms", () => {
     const appActionsPath = resolve(
       import.meta.dirname,
       "../app/admin/users/actions.ts"
     );
+    const actionsSource = readFileSync(appActionsPath, "utf8");
     const roleActionsSource = readFileSync(
       resolve(import.meta.dirname, "../lib/admin-user-role-actions.ts"),
       "utf8"
@@ -199,10 +200,13 @@ describe("admin user role action state", () => {
       "utf8"
     );
 
-    expect(existsSync(appActionsPath)).toBe(false);
+    expect(existsSync(appActionsPath)).toBe(true);
+    expect(actionsSource).toContain('actionState("admin.users.role.assign"');
+    expect(actionsSource).toContain("authorizeAdminPage");
     expect(roleActionsSource).not.toContain("createPlaygroundRoleTransaction");
     expect(roleActionsSource).not.toContain('formData.get("csrfCookie")');
     expect(userRolesSource).not.toContain('name="csrfCookie"');
+    expect(userRolesSource).toContain('name="csrfToken"');
   });
 
   it("rejects role changes without a target id as validation error", async () => {

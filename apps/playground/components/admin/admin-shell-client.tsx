@@ -14,11 +14,12 @@ type AdminShellClientProps = Readonly<{
 type AdminNavItem = {
   href: string;
   label: string;
-  slug: "users" | "audit";
+  slug: "audit" | "roles" | "users";
 };
 
 const adminNav: readonly AdminNavItem[] = [
   { href: "/admin/users", label: "Users", slug: "users" },
+  { href: "/admin/roles", label: "Roles", slug: "roles" },
   { href: "/admin/audit", label: "Audit", slug: "audit" }
 ];
 
@@ -38,6 +39,10 @@ export function AdminShellClient({
 
     if (pathname.includes("/admin/users")) {
       return "users";
+    }
+
+    if (pathname.includes("/admin/roles")) {
+      return "roles";
     }
 
     if (pathname.includes("/admin/audit")) {

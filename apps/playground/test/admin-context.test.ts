@@ -33,7 +33,9 @@ function createClient(input: {
         rowCount: input.permissionIds?.length ?? 0,
         rows: (input.permissionIds ?? []).map((permissionId) => ({
           expires_at: null,
+          granted: true,
           permission_id: permissionId,
+          source: "role",
           status: input.status ?? "active"
         })) as unknown as readonly Row[]
       };

@@ -219,11 +219,13 @@ describe("Phase 2 access policy", () => {
       })
     }, createPageQueryClient([
       {
+        id: "user_admin",
         email: "admin@example.test",
         name: "Admin User",
         role: "admin"
       },
       {
+        id: "user_core",
         email: "user@example.test",
         name: "Core User",
         role: "user"
@@ -235,11 +237,13 @@ describe("Phase 2 access policy", () => {
     expect(queries.join("\n")).toContain("INNER JOIN role");
     expect(page.users).toEqual([
       {
+        id: "user_admin",
         email: "admin@example.test",
         name: "Admin User",
         role: "admin"
       },
       {
+        id: "user_core",
         email: "user@example.test",
         name: "Core User",
         role: "user"

@@ -49,12 +49,13 @@ export type AdminUserActionState = ActionFeedbackState;
 
 export type CreateRoleActionStateOptions<Input extends object> = Readonly<{
   authorize: (input: ActionAuthorizeInput<Input>) => Promise<AuthorizedActor>;
-  readCsrfCookie: () => string | undefined;
+  readClientIp: () => Promise<string> | string;
+  readCsrfCookie: () => Promise<string | undefined> | string | undefined;
   transaction: BootstrapTransaction;
 }>;
 
 function toFeedbackState(
-  action: Exclude<AdminUserAction, "admin.users.role.bulk_assign">,
+  action: Exclude<AdminUserAction, "admin.roles.permissions.save" | "admin.users.permissions.override" | "admin.users.role.bulk_assign">,
   result: ActionResult<RoleMutationOutput>
 ): ActionFeedbackState {
   if (!result.ok) {
@@ -79,10 +80,11 @@ function toFeedbackState(
 
 function parseRoleFormData(
   formData: FormData,
-  csrfCookie: string | undefined
+  csrfCookie: string | undefined,
+  clientIp: string
 ): RoleMutationInput {
   return {
-    clientIp: "127.0.0.1",
+    clientIp,
     csrfCookie,
     csrfToken: optionalFormString(formData.get("csrfToken")),
     roleId:
@@ -95,10 +97,11 @@ function parseRoleFormData(
 
 function parseBulkRoleFormData(
   formData: FormData,
-  csrfCookie: string | undefined
+  csrfCookie: string | undefined,
+  clientIp: string
 ) {
   return {
-    clientIp: "127.0.0.1",
+    clientIp,
     confirmed: String(formData.get("confirmed") ?? ""),
     csrfCookie,
     csrfToken: optionalFormString(formData.get("csrfToken")),
@@ -142,7 +145,12 @@ export function createAssignAdminRoleStateOptions(
       return mergeActionFeedbackState(previousState, nextState);
     },
     onFailure: failureState("admin.users.role.assign"),
-    parse: (formData) => parseRoleFormData(formData, options.readCsrfCookie()),
+    parse: async (formData) =>
+      parseRoleFormData(
+        formData,
+        await options.readCsrfCookie(),
+        await options.readClientIp()
+      ),
     schema: roleMutationSchema
   };
 }
@@ -165,7 +173,12 @@ export function createRevokeAdminRoleStateOptions(
       return mergeActionFeedbackState(previousState, nextState);
     },
     onFailure: failureState("admin.users.role.revoke"),
-    parse: (formData) => parseRoleFormData(formData, options.readCsrfCookie()),
+    parse: async (formData) =>
+      parseRoleFormData(
+        formData,
+        await options.readCsrfCookie(),
+        await options.readClientIp()
+      ),
     schema: roleMutationSchema
   };
 }
@@ -212,7 +225,12 @@ export function createBulkAssignAdminRoleStateOptions(
       });
     },
     onFailure: failureState("admin.users.role.bulk_assign"),
-    parse: (formData) => parseBulkRoleFormData(formData, options.readCsrfCookie()),
+    parse: async (formData) =>
+      parseBulkRoleFormData(
+        formData,
+        await options.readCsrfCookie(),
+        await options.readClientIp()
+      ),
     schema: bulkRoleMutationSchema
   };
 }

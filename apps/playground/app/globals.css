@@ -553,3 +553,67 @@ a:focus-visible {
     transition: none;
   }
 }
+
+.admin-stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.admin-summary-card,
+.admin-permission-group,
+.admin-access-row {
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.2));
+  border-radius: 0.75rem;
+  padding: 1rem;
+  background: var(--panel, rgba(255, 255, 255, 0.04));
+}
+
+.admin-inline-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0;
+}
+
+.admin-link {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.admin-permission-grid,
+.admin-access-table {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.admin-permission-option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.75rem;
+  align-items: start;
+  padding: 0.75rem 0;
+}
+
+.admin-permission-option small,
+.admin-permission-option em {
+  display: block;
+  color: var(--muted-foreground, rgba(127, 127, 127, 0.9));
+}
+
+.admin-access-row {
+  display: grid;
+  gap: 1rem;
+}
+
+.admin-inline-form {
+  display: inline-flex;
+}
+
+@media (min-width: 900px) {
+  .admin-access-row {
+    grid-template-columns: 1.4fr 1fr 0.8fr auto;
+    align-items: start;
+  }
+}

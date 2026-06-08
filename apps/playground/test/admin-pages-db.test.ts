@@ -70,6 +70,7 @@ describe("admin page DB binding", () => {
   it("keeps admin user loader SQL bounded to the expected query budget", async () => {
     const query = recordingClient([
       {
+        id: "user_admin",
         email: "admin@example.test",
         name: "Admin User",
         role: "admin"
@@ -79,6 +80,7 @@ describe("admin page DB binding", () => {
     await expect(loadAdminUsersPage(adminContext(), query.client)).resolves.toEqual({
       users: [
         {
+          id: "user_admin",
           email: "admin@example.test",
           name: "Admin User",
           role: "admin"

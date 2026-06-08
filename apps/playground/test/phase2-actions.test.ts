@@ -5,6 +5,8 @@ import {
   createBootstrapClaimAction,
   createLoginAction,
   createRevokeRoleAction,
+  createSaveRolePermissionsAction,
+  createSetUserPermissionOverrideAction,
   type BootstrapTransactionClient
 } from "../lib/phase2-actions.js";
 
@@ -1184,5 +1186,308 @@ describe("Phase 2 admin role actions", () => {
     expect(sql).toContain("permission_managers");
     expect(sql).toContain("DELETE FROM user_role");
     expect(sql).toContain("INSERT INTO audit_event");
+  });
+
+  it("serializes role-permission batch saves with the critical RBAC lock", async () => {
+    const queries: Array<{ sql: string; parameters: readonly unknown[] }> = [];
+    const saveRolePermissions = createSaveRolePermissionsAction({
+      authorize: vi.fn().mockResolvedValue({
+        permissions: new Set(["admin.permissions:update"]),
+        sessionId: "session_1",
+        userId: "admin_1"
+      }),
+      transaction: async (callback) =>
+        callback({
+          async query(sql, parameters = []) {
+            queries.push({ sql, parameters });
+
+            if (queryContains(sql, "select stage from role")) {
+              return {
+                rowCount: 1,
+                rows: [{ stage: "active" }]
+              };
+            }
+
+            if (queryContains(sql, "select permission_id from role_permission")) {
+              return {
+                rowCount: 1,
+                rows: [{ permission_id: "admin.users:read" }]
+              };
+            }
+
+            return {
+              rowCount: 1,
+              rows: []
+            };
+          }
+        })
+    });
+
+    await expect(
+      saveRolePermissions({
+        clientIp: "127.0.0.1",
+        confirmed: "yes",
+        csrfCookie: "csrf",
+        csrfToken: "csrf",
+        permissionIds: ["admin.users:read", "admin.users:update"],
+        roleId: "editor"
+      })
+    ).resolves.toEqual({
+      data: {
+        saved: true
+      },
+      ok: true
+    });
+    const sql = queries.map((query) => query.sql).join("\n");
+    expect(sql).toContain("pg_advisory_xact_lock");
+    expect(sql).toContain("DELETE FROM role_permission");
+    expect(sql).toContain("INSERT INTO role_permission");
+    expect(sql).toContain("INSERT INTO audit_event");
+    expect(sql).toContain("rbac.role_permissions.save");
+    expect(
+      queries.find((query) => queryContains(query.sql, "insert into role_permission"))
+        ?.parameters
+    ).toEqual(["editor", ["admin.users:read", "admin.users:update"]]);
+  });
+
+  it("rejects role-permission saves that would remove the last permission-manager", async () => {
+    const queries: string[] = [];
+    const saveRolePermissions = createSaveRolePermissionsAction({
+      authorize: vi.fn().mockResolvedValue({
+        permissions: new Set(["admin.permissions:update"]),
+        sessionId: "session_1",
+        userId: "admin_1"
+      }),
+      transaction: async (callback) =>
+        callback({
+          async query(sql) {
+            queries.push(sql);
+
+            if (queryContains(sql, "select stage from role")) {
+              return {
+                rowCount: 1,
+                rows: [{ stage: "active" }]
+              };
+            }
+
+            if (queryContains(sql, "select permission_id from role_permission")) {
+              return {
+                rowCount: 1,
+                rows: [
+                  { permission_id: "admin.permissions:update" },
+                  { permission_id: "admin.users:read" }
+                ]
+              };
+            }
+
+            if (queryContains(sql, "permission_managers")) {
+              return {
+                rowCount: 1,
+                rows: [{ actor_count: "0", count: "0" }]
+              };
+            }
+
+            return {
+              rowCount: 1,
+              rows: []
+            };
+          }
+        })
+    });
+
+    await expect(
+      saveRolePermissions({
+        clientIp: "127.0.0.1",
+        confirmed: "yes",
+        csrfCookie: "csrf",
+        csrfToken: "csrf",
+        permissionIds: ["admin.users:read"],
+        roleId: "admin"
+      })
+    ).resolves.toEqual({
+      error: {
+        code: "auth.forbidden"
+      },
+      ok: false
+    });
+    const sql = queries.join("\n");
+    expect(sql).toContain("pg_advisory_xact_lock");
+    expect(sql).toContain("permission_managers");
+    expect(sql).not.toContain("DELETE FROM role_permission");
+    expect(sql).not.toContain("INSERT INTO audit_event");
+  });
+
+  it("rejects role-permission saves that would self-lock the permission manager", async () => {
+    const queries: string[] = [];
+    const saveRolePermissions = createSaveRolePermissionsAction({
+      authorize: vi.fn().mockResolvedValue({
+        permissions: new Set(["admin.permissions:update"]),
+        sessionId: "session_1",
+        userId: "admin_1"
+      }),
+      transaction: async (callback) =>
+        callback({
+          async query(sql) {
+            queries.push(sql);
+
+            if (queryContains(sql, "select stage from role")) {
+              return {
+                rowCount: 1,
+                rows: [{ stage: "active" }]
+              };
+            }
+
+            if (queryContains(sql, "select permission_id from role_permission")) {
+              return {
+                rowCount: 1,
+                rows: [
+                  { permission_id: "admin.permissions:update" },
+                  { permission_id: "admin.users:read" }
+                ]
+              };
+            }
+
+            if (queryContains(sql, "permission_managers")) {
+              return {
+                rowCount: 1,
+                rows: [{ actor_count: "0", count: "2" }]
+              };
+            }
+
+            return {
+              rowCount: 1,
+              rows: []
+            };
+          }
+        })
+    });
+
+    await expect(
+      saveRolePermissions({
+        clientIp: "127.0.0.1",
+        confirmed: "yes",
+        csrfCookie: "csrf",
+        csrfToken: "csrf",
+        permissionIds: ["admin.users:read"],
+        roleId: "admin"
+      })
+    ).resolves.toEqual({
+      error: {
+        code: "auth.forbidden"
+      },
+      ok: false
+    });
+    expect(queries.join("\n")).not.toContain("DELETE FROM role_permission");
+  });
+
+  it("serializes permission-manager direct overrides and blocks self-deny", async () => {
+    const queries: string[] = [];
+    const setOverride = createSetUserPermissionOverrideAction({
+      authorize: vi.fn().mockResolvedValue({
+        permissions: new Set(["admin.permissions:update"]),
+        sessionId: "session_1",
+        userId: "admin_1"
+      }),
+      transaction: async (callback) =>
+        callback({
+          async query(sql) {
+            queries.push(sql);
+
+            if (queryContains(sql, "select granted from user_permission")) {
+              return {
+                rowCount: 0,
+                rows: []
+              };
+            }
+
+            if (queryContains(sql, "permission_managers")) {
+              return {
+                rowCount: 1,
+                rows: [{ actor_count: "0", count: "2" }]
+              };
+            }
+
+            return {
+              rowCount: 1,
+              rows: []
+            };
+          }
+        })
+    });
+
+    await expect(
+      setOverride({
+        clientIp: "127.0.0.1",
+        csrfCookie: "csrf",
+        csrfToken: "csrf",
+        override: "deny",
+        permissionId: "admin.permissions:update",
+        targetUserId: "admin_1"
+      })
+    ).resolves.toEqual({
+      error: {
+        code: "auth.forbidden"
+      },
+      ok: false
+    });
+    const sql = queries.join("\n");
+    expect(sql).toContain("pg_advisory_xact_lock");
+    expect(sql).toContain("permission_managers");
+    expect(sql).not.toContain("INSERT INTO user_permission");
+    expect(sql).not.toContain("INSERT INTO audit_event");
+  });
+
+  it("saves direct permission grants and audits the override", async () => {
+    const queries: Array<{ sql: string; parameters: readonly unknown[] }> = [];
+    const setOverride = createSetUserPermissionOverrideAction({
+      authorize: vi.fn().mockResolvedValue({
+        permissions: new Set(["admin.permissions:update"]),
+        sessionId: "session_1",
+        userId: "admin_1"
+      }),
+      transaction: async (callback) =>
+        callback({
+          async query(sql, parameters = []) {
+            queries.push({ sql, parameters });
+
+            if (queryContains(sql, "select granted from user_permission")) {
+              return {
+                rowCount: 0,
+                rows: []
+              };
+            }
+
+            return {
+              rowCount: 1,
+              rows: []
+            };
+          }
+        })
+    });
+
+    await expect(
+      setOverride({
+        clientIp: "127.0.0.1",
+        csrfCookie: "csrf",
+        csrfToken: "csrf",
+        override: "grant",
+        permissionId: "admin.audit:read",
+        targetUserId: "user_1"
+      })
+    ).resolves.toEqual({
+      data: {
+        saved: true
+      },
+      ok: true
+    });
+    const sql = queries.map((query) => query.sql).join("\n");
+    expect(sql).not.toContain("pg_advisory_xact_lock");
+    expect(sql).toContain("INSERT INTO user_permission");
+    expect(sql).toContain("INSERT INTO audit_event");
+    expect(sql).toContain("rbac.permission_override.grant");
+    expect(
+      queries.find((query) => queryContains(query.sql, "insert into user_permission"))
+        ?.parameters
+    ).toEqual(["user_1", "admin.audit:read", true, "admin_1"]);
   });
 });

@@ -255,6 +255,84 @@ function checkPermissionCatalogSeedsStayInSync() {
   }
 }
 
+function checkDrizzleMigrationArtifactsStayInSync() {
+  const drizzleDir = path.join(root, "packages/db/drizzle");
+  const metaDir = path.join(drizzleDir, "meta");
+  const journalPath = path.join(metaDir, "_journal.json");
+
+  if (!statSync(drizzleDir, { throwIfNoEntry: false })?.isDirectory()) {
+    fail(`${relative(drizzleDir)} is missing; Drizzle migrations must live in packages/db/drizzle.`);
+    return;
+  }
+
+  if (!statSync(metaDir, { throwIfNoEntry: false })?.isDirectory()) {
+    fail(`${relative(metaDir)} is missing; Drizzle metadata snapshots must live in packages/db/drizzle/meta.`);
+    return;
+  }
+
+  if (!statSync(journalPath, { throwIfNoEntry: false })?.isFile()) {
+    fail(`${relative(journalPath)} is missing; Drizzle migration journal is required.`);
+    return;
+  }
+
+  let journal;
+
+  try {
+    journal = JSON.parse(read(journalPath));
+  } catch {
+    fail(`${relative(journalPath)} is not valid JSON.`);
+    return;
+  }
+
+  const entries = Array.isArray(journal.entries) ? journal.entries : [];
+  const migrationFiles = readdirSync(drizzleDir).filter((fileName) =>
+    /^\d+_.+\.sql$/.test(fileName)
+  );
+  const snapshotFiles = readdirSync(metaDir).filter((fileName) =>
+    /^\d+_snapshot\.json$/.test(fileName)
+  );
+  const sortNumbers = (left, right) => left - right;
+  const journalIndexes = entries
+    .map((entry) => entry.idx)
+    .filter((index) => Number.isInteger(index))
+    .sort(sortNumbers);
+  const migrationIndexes = migrationFiles
+    .map((fileName) => Number(fileName.split("_")[0]))
+    .filter((index) => Number.isInteger(index))
+    .sort(sortNumbers);
+  const snapshotIndexes = snapshotFiles
+    .map((fileName) => Number(fileName.split("_")[0]))
+    .filter((index) => Number.isInteger(index))
+    .sort(sortNumbers);
+
+  if (JSON.stringify(journalIndexes) !== JSON.stringify(migrationIndexes)) {
+    fail(
+      `Drizzle migration journal indexes [${journalIndexes.join(", ")}] do not match SQL migrations [${migrationIndexes.join(", ")}].`
+    );
+  }
+
+  if (JSON.stringify(journalIndexes) !== JSON.stringify(snapshotIndexes)) {
+    fail(
+      `Drizzle migration journal indexes [${journalIndexes.join(", ")}] do not match metadata snapshots [${snapshotIndexes.join(", ")}].`
+    );
+  }
+
+  const migrationFileNames = new Set(migrationFiles);
+  const snapshotFileNames = new Set(snapshotFiles);
+
+  for (const entry of entries) {
+    if (!migrationFileNames.has(`${entry.tag}.sql`)) {
+      fail(`Drizzle journal entry ${entry.tag} is missing ${entry.tag}.sql.`);
+    }
+
+    const snapshotFileName = `${String(entry.idx).padStart(4, "0")}_snapshot.json`;
+
+    if (!snapshotFileNames.has(snapshotFileName)) {
+      fail(`Drizzle journal entry ${entry.tag} is missing ${snapshotFileName}.`);
+    }
+  }
+}
+
 function checkActionPolicies() {
   const actions = parseActionRegistry();
   const catalog = catalogPermissionIds();
@@ -321,6 +399,7 @@ checkDbPackageIsBottomLayer();
 checkUiPackageDoesNotImportServerPackages();
 checkBannedUiDependencies();
 checkPermissionCatalogSeedsStayInSync();
+checkDrizzleMigrationArtifactsStayInSync();
 checkActionPolicies();
 checkDocumentedScriptsExist();
 

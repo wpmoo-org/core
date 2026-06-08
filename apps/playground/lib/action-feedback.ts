@@ -2,16 +2,20 @@ import { getErrorDefinition } from "@wpmoo/errors";
 
 export type Locale = "de" | "en";
 
-export type AdminUserAction =
+export type AdminAction =
+  | "admin.roles.permissions.save"
+  | "admin.users.permissions.override"
   | "admin.users.role.assign"
   | "admin.users.role.bulk_assign"
   | "admin.users.role.revoke";
+
+export type AdminUserAction = AdminAction;
 
 export type ActionFeedbackStatus = "idle" | "error" | "success";
 
 export type ActionFeedbackState = Readonly<{
   status: ActionFeedbackStatus;
-  action: AdminUserAction | null;
+  action: AdminAction | null;
   changed?: boolean;
   code: string | null;
 }>;
@@ -23,9 +27,11 @@ export type SearchParamsLike = Readonly<{
 }>;
 
 const DEFAULT_LOCALE = "en" as const;
-const SEARCH_ACTION_ASSIGN: AdminUserAction = "admin.users.role.assign";
-const SEARCH_ACTION_BULK_ASSIGN: AdminUserAction = "admin.users.role.bulk_assign";
-const SEARCH_ACTION_REVOKE: AdminUserAction = "admin.users.role.revoke";
+const SEARCH_ACTION_ASSIGN: AdminAction = "admin.users.role.assign";
+const SEARCH_ACTION_BULK_ASSIGN: AdminAction = "admin.users.role.bulk_assign";
+const SEARCH_ACTION_REVOKE: AdminAction = "admin.users.role.revoke";
+const SEARCH_ACTION_ROLE_PERMISSIONS_SAVE: AdminAction = "admin.roles.permissions.save";
+const SEARCH_ACTION_USER_PERMISSION_OVERRIDE: AdminAction = "admin.users.permissions.override";
 const DEFAULT_STATE: ActionFeedbackState = {
   status: "idle",
   action: null,
@@ -34,10 +40,12 @@ const DEFAULT_STATE: ActionFeedbackState = {
 
 const localeMessages = {
   de: {
-    "Actions.AdminUsers.Assign": "Rolle als Administrator zugewiesen.",
+    "Actions.AdminRoles.PermissionsSave": "Rollenberechtigungen gespeichert.",
+    "Actions.AdminUsers.Assign": "Administratorrolle zugewiesen.",
     "Actions.AdminUsers.BulkAssign": "Administratorrollen zugewiesen.",
+    "Actions.AdminUsers.Noop": "Es waren keine Änderungen erforderlich.",
+    "Actions.AdminUsers.Override": "Berechtigungsüberschreibung gespeichert.",
     "Actions.AdminUsers.Revoke": "Administratorrolle entfernt.",
-    "Actions.AdminUsers.Noop": "Die Rolle war bereits in diesem Zustand.",
     "Errors.Auth.Forbidden": "Zugriff verweigert.",
     "Errors.Auth.InvalidCredentials": "Die Anmeldedaten sind ungültig.",
     "Errors.Auth.RateLimited": "Zu viele Anfragen. Bitte später erneut versuchen.",
@@ -47,10 +55,12 @@ const localeMessages = {
     "Errors.Validation.InvalidInput": "Die übergebenen Daten sind ungültig."
   },
   en: {
+    "Actions.AdminRoles.PermissionsSave": "Role permissions saved.",
     "Actions.AdminUsers.Assign": "Admin role assigned.",
     "Actions.AdminUsers.BulkAssign": "Admin roles assigned.",
+    "Actions.AdminUsers.Noop": "No changes were needed.",
+    "Actions.AdminUsers.Override": "Permission override saved.",
     "Actions.AdminUsers.Revoke": "Admin role revoked.",
-    "Actions.AdminUsers.Noop": "The role was already in this state.",
     "Errors.Auth.Forbidden": "Access is forbidden.",
     "Errors.Auth.InvalidCredentials": "Invalid login credentials.",
     "Errors.Auth.RateLimited": "Too many attempts. Please try again later.",
@@ -61,22 +71,30 @@ const localeMessages = {
   }
 } as const;
 
-const DEFAULT_SUCCESS_BY_ACTION: Record<AdminUserAction, string> = {
+const DEFAULT_SUCCESS_BY_ACTION: Record<AdminAction, string> = {
   [SEARCH_ACTION_ASSIGN]: "Actions.AdminUsers.Assign",
   [SEARCH_ACTION_BULK_ASSIGN]: "Actions.AdminUsers.BulkAssign",
-  [SEARCH_ACTION_REVOKE]: "Actions.AdminUsers.Revoke"
+  [SEARCH_ACTION_REVOKE]: "Actions.AdminUsers.Revoke",
+  [SEARCH_ACTION_ROLE_PERMISSIONS_SAVE]: "Actions.AdminRoles.PermissionsSave",
+  [SEARCH_ACTION_USER_PERMISSION_OVERRIDE]: "Actions.AdminUsers.Override"
 };
 
-function isAdminUserAction(value: string): value is AdminUserAction {
+function isAdminAction(value: string): value is AdminAction {
   return (
     value === SEARCH_ACTION_ASSIGN ||
     value === SEARCH_ACTION_BULK_ASSIGN ||
-    value === SEARCH_ACTION_REVOKE
+    value === SEARCH_ACTION_REVOKE ||
+    value === SEARCH_ACTION_ROLE_PERMISSIONS_SAVE ||
+    value === SEARCH_ACTION_USER_PERMISSION_OVERRIDE
   );
 }
 
 function firstValue(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
+}
+
+export function createIdleActionFeedbackState(): ActionFeedbackState {
+  return DEFAULT_STATE;
 }
 
 export function parseLocale(value: string | undefined): Locale {
@@ -94,7 +112,7 @@ export function parseActionFeedbackFromSearchParams(
   const result = firstValue(params.result);
   const code = firstValue(params.code);
 
-  if (action === undefined || !isAdminUserAction(action)) {
+  if (action === undefined || !isAdminAction(action)) {
     return DEFAULT_STATE;
   }
 
@@ -149,9 +167,7 @@ export function resolveActionFeedbackMessage(
       return localMessage("Actions.AdminUsers.Noop");
     }
 
-    return localMessage(
-      DEFAULT_SUCCESS_BY_ACTION[state.action]
-    );
+    return localMessage(DEFAULT_SUCCESS_BY_ACTION[state.action]);
   }
 
   const errorCode = getErrorDefinition(state.code ?? "system.unexpected").translationKey;

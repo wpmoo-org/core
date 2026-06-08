@@ -8,6 +8,18 @@ export const phase3QueryBudgets = {
     maxQueries: 2,
     p95Ms: 50
   },
+  adminRoleEditor: {
+    maxQueries: 3,
+    p95Ms: 75
+  },
+  adminRolesList: {
+    maxQueries: 2,
+    p95Ms: 50
+  },
+  adminUserAccess: {
+    maxQueries: 3,
+    p95Ms: 75
+  },
   adminUsersList: {
     maxQueries: 2,
     p95Ms: 50

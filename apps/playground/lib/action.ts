@@ -55,6 +55,20 @@ export const actionRegistry = {
     requireCsrf: true,
     resource: "admin.users",
     risk: "high"
+  },
+  "admin.roles.permissions.save": {
+    action: "update",
+    audit: true,
+    requireCsrf: true,
+    resource: "admin.permissions",
+    risk: "critical"
+  },
+  "admin.users.permissions.override": {
+    action: "update",
+    audit: true,
+    requireCsrf: true,
+    resource: "admin.permissions",
+    risk: "critical"
   }
 } as const;
 

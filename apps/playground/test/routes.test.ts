@@ -3,18 +3,21 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const appDir = resolve(import.meta.dirname, "../app");
-const phase2Routes = [
+const phaseRoutes = [
   "login/page.tsx",
   "register/page.tsx",
   "dashboard/page.tsx",
   "setup/admin/page.tsx",
   "admin/users/page.tsx",
-  "admin/audit/page.tsx"
+  "admin/users/[userId]/access/page.tsx",
+  "admin/audit/page.tsx",
+  "admin/roles/page.tsx",
+  "admin/roles/[roleId]/page.tsx"
 ];
 
-describe("Phase 2 routes", () => {
-  it("defines the first secure slice routes and localized re-exports", () => {
-    for (const route of phase2Routes) {
+describe("app routes", () => {
+  it("defines the secure slice routes and localized re-exports", () => {
+    for (const route of phaseRoutes) {
       expect(existsSync(resolve(appDir, route))).toBe(true);
       expect(existsSync(resolve(appDir, "[locale]", route))).toBe(true);
       const localizedContent = readFileSync(resolve(appDir, "[locale]", route), "utf8");
@@ -25,7 +28,7 @@ describe("Phase 2 routes", () => {
   });
 
   it("marks protected and auth-adjacent routes as dynamic", () => {
-    for (const route of phase2Routes) {
+    for (const route of phaseRoutes) {
       expect(readFileSync(resolve(appDir, route), "utf8")).toContain(
         'export const dynamic = "force-dynamic"'
       );

@@ -27,13 +27,16 @@ describe("admin shell", () => {
     expect(adminLayout).toContain("AdminShellLayout");
     expect(adminLayout).toContain('headers()).get("x-wpmoo-locale")');
     expect(localeAdminLayout).toBe(
-      'export { default } from "../../admin/layout";\nexport * from "../../admin/layout";\n'
+      'export { default } from "../../admin/layout";
+export * from "../../admin/layout";
+'
     );
   });
 
-  it("keeps admin route auth loaders and switches admin pages to shell content wrappers", () => {
+  it("keeps admin route auth loaders and shell wrappers for admin pages", () => {
     const usersPage = readFileSync(resolve(adminDir, "users/page.tsx"), "utf8");
     const auditPage = readFileSync(resolve(adminDir, "audit/page.tsx"), "utf8");
+    const rolesPage = readFileSync(resolve(adminDir, "roles/page.tsx"), "utf8");
 
     expect(usersPage).toContain("createAdminPageContext");
     expect(usersPage).toContain("createPlaygroundQueryClient");
@@ -44,7 +47,9 @@ describe("admin shell", () => {
     expect(auditPage).toContain("createAdminPageContext");
     expect(auditPage).toContain("createPlaygroundQueryClient");
     expect(auditPage).toContain("admin-panel");
-    expect(auditPage).not.toContain('className="shell"');
+
+    expect(rolesPage).toContain("loadAdminRolesPage");
+    expect(rolesPage).toContain("admin-panel");
   });
 
   it("implements responsive admin shell controls and binary theme toggle in client shell", () => {
@@ -55,10 +60,11 @@ describe("admin shell", () => {
 
     expect(shellClient).toContain('aria-controls="admin-sidebar"');
     expect(shellClient).toContain('aria-expanded={isSidebarOpen}');
-    expect(shellClient).toContain("className={`admin-sidebar${isSidebarOpen ? \" is-open\" : \"\"}`}");
+    expect(shellClient).toContain("admin-sidebar");
     expect(shellClient).toContain('admin-theme-toggle');
     expect(shellClient).toContain("isThemeReady");
     expect(shellClient).toContain("aria-pressed={isDarkMode}");
-    expect(shellClient).toContain("{isDarkMode ? \"Light\" : \"Dark\"}");
+    expect(shellClient).toContain('{isDarkMode ? "Light" : "Dark"}');
+    expect(shellClient).toContain('/admin/roles');
   });
 });

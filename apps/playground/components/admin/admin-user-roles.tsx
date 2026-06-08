@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
+import Link from "next/link";
+import { useActionState, useMemo } from "react";
 import {
   DataTable,
   DataTableActionBar,
@@ -12,27 +13,63 @@ import {
 } from "@wpmoo/ui/data-table";
 
 import {
+  createIdleActionFeedbackState,
+  mergeActionFeedbackState,
   type ActionFeedbackState,
   type Locale
 } from "../../lib/action-feedback";
 import type { AdminUserRow } from "../../lib/phase2-pages";
 import { AdminActionFeedback } from "./admin-action-feedback";
 
+type ActionStateHandler = (
+  previousState: ActionFeedbackState,
+  formData: FormData
+) => Promise<ActionFeedbackState>;
+
 type AdminUserRolesProps = Readonly<{
+  assignAdminRole: ActionStateHandler;
+  bulkAssignAdminRole: ActionStateHandler;
+  csrfToken: string;
   initialState: ActionFeedbackState;
   locale: Locale;
+  revokeAdminRole: ActionStateHandler;
   users: readonly AdminUserRow[];
 }>;
 
 export function AdminUserRoles({
+  assignAdminRole,
+  bulkAssignAdminRole,
+  csrfToken,
   initialState,
   locale,
+  revokeAdminRole,
   users
 }: AdminUserRolesProps) {
+  const [assignState, assignAction, isAssignPending] = useActionState(
+    assignAdminRole,
+    initialState
+  );
+  const [revokeState, revokeAction, isRevokePending] = useActionState(
+    revokeAdminRole,
+    createIdleActionFeedbackState()
+  );
+  const [bulkState, bulkAction, isBulkPending] = useActionState(
+    bulkAssignAdminRole,
+    createIdleActionFeedbackState()
+  );
+  const feedbackState = useMemo(
+    () => [bulkState, revokeState, assignState].reduce(mergeActionFeedbackState, initialState),
+    [assignState, bulkState, initialState, revokeState]
+  );
   const columns = useMemo<readonly DataTableColumnDef<AdminUserRow>[]>(
     () => [
       {
         accessor: "name",
+        cell: ({ row }) => (
+          <Link className="admin-link" href={`/admin/users/${row.id}/access`}>
+            {row.name}
+          </Link>
+        ),
         header: "Name",
         id: "name"
       },
@@ -57,16 +94,19 @@ export function AdminUserRoles({
         id: "role"
       },
       {
-        accessor: "email",
+        accessor: "role",
         cell: ({ row }) => {
           const isAdmin = row.role === "admin";
           const buttonLabel = isAdmin ? "Revoke admin" : "Assign admin";
+          const formAction = isAdmin ? revokeAction : assignAction;
+          const isPending = isAdmin ? isRevokePending : isAssignPending;
 
           return (
-            <form>
+            <form action={formAction} className="admin-inline-form">
+              <input name="csrfToken" type="hidden" value={csrfToken} />
               <input name="roleId" type="hidden" value="admin" />
-              <input name="targetUserId" type="hidden" value={row.email} />
-              <button type="submit" disabled>
+              <input name="targetUserId" type="hidden" value={row.id} />
+              <button type="submit" disabled={isPending}>
                 {buttonLabel}
               </button>
             </form>
@@ -77,19 +117,19 @@ export function AdminUserRoles({
         id: "action"
       }
     ],
-    []
+    [assignAction, csrfToken, isAssignPending, isRevokePending, revokeAction]
   );
   const table = useDataTable({
     columns,
     data: users,
     defaultPageSize: 10,
-    getRowId: (user) => user.email
+    getRowId: (user) => user.id
   });
   const selectedRows = table.getFilteredSelectedRowModel().rows;
 
   return (
     <>
-      <AdminActionFeedback locale={locale} state={initialState} />
+      <AdminActionFeedback locale={locale} state={feedbackState} />
       <DataTableToolbar table={table} searchPlaceholder="Search users">
         <DataTableFacetedFilter
           column={table.getColumn("role")}
@@ -100,20 +140,21 @@ export function AdminUserRoles({
       <DataTable table={table} />
       <DataTablePagination table={table} />
       <DataTableActionBar table={table}>
-        <form className="admin-bulk-action-form">
+        <form action={bulkAction} className="admin-bulk-action-form">
+          <input name="csrfToken" type="hidden" value={csrfToken} />
           {selectedRows.map((row) => (
             <input
               key={row.id}
               name="targetUserId"
               type="hidden"
-              value={row.original.email}
+              value={row.original.id}
             />
           ))}
           <label>
             <input name="confirmed" type="checkbox" value="yes" />
             Confirm role change
           </label>
-          <button type="submit" disabled>
+          <button type="submit" disabled={isBulkPending}>
             Assign admin to selected
           </button>
         </form>

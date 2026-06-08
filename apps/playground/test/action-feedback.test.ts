@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  createIdleActionFeedbackState,
   parseActionFeedbackFromSearchParams,
   parseLocale,
   resolveActionFeedbackMessage
@@ -10,6 +11,14 @@ describe("playground action feedback", () => {
     expect(parseLocale("de")).toBe("de");
     expect(parseLocale("fr")).toBe("en");
     expect(parseLocale(undefined)).toBe("en");
+  });
+
+  it("creates the shared idle action feedback state", () => {
+    expect(createIdleActionFeedbackState()).toEqual({
+      action: null,
+      code: null,
+      status: "idle"
+    });
   });
 
   it("parses action feedback success from search params", () => {
@@ -67,26 +76,26 @@ describe("playground action feedback", () => {
     expect(
       resolveActionFeedbackMessage(
         {
-          action: "admin.users.role.bulk_assign",
+          action: "admin.roles.permissions.save",
           changed: true,
           code: null,
           status: "success"
         },
         "en"
       )
-    ).toBe("Admin roles assigned.");
+    ).toBe("Role permissions saved.");
 
     expect(
       resolveActionFeedbackMessage(
         {
-          action: "admin.users.role.revoke",
+          action: "admin.users.permissions.override",
           changed: false,
           code: null,
           status: "success"
         },
         "de"
       )
-    ).toBe("Die Rolle war bereits in diesem Zustand.");
+    ).toBe("Es waren keine Änderungen erforderlich.");
 
     expect(
       resolveActionFeedbackMessage(
